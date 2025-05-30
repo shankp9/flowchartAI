@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
-import { Available_Themes } from "@/constants/themes" // Declare or import Available_Themes
+import { Available_Themes } from "@/constants/themes"
 
 interface MermaidProps {
   chart: string
