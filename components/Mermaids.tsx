@@ -6,7 +6,6 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
 import {
   Copy,
-  Palette,
   AlertCircle,
   Code,
   CheckCircle,
@@ -20,8 +19,6 @@ import {
   Maximize,
   MousePointer2,
   Hand,
-  Navigation,
-  Settings,
   Move,
 } from "lucide-react"
 import type { Theme } from "@/types/type"
@@ -63,10 +60,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [selectedElement, setSelectedElement] = useState<Element | null>(null)
   const [interactionMode, setInteractionMode] = useState<"pan" | "select">("pan")
 
-  // Control panel state
-  const [controlsExpanded, setControlsExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<"zoom" | "theme" | "export">("zoom")
-
   // Responsive breakpoints
   const [screenSize, setScreenSize] = useState<"mobile" | "tablet" | "desktop">("desktop")
 
@@ -83,7 +76,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       const width = window.innerWidth
       if (width < 768) {
         setScreenSize("mobile")
-        setControlsExpanded(false)
       } else if (width < 1024) {
         setScreenSize("tablet")
       } else {
@@ -775,359 +767,275 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         />
       )}
 
-      {/* Responsive Control Panel */}
-      <div
-        className={`absolute ${
-          screenSize === "mobile" ? "top-2 right-2" : "top-4 right-4"
-        } z-20 transition-all duration-300 opacity-100`}
-      >
+      {/* Always Visible Canvas Controls */}
+      <div className={`absolute ${screenSize === "mobile" ? "top-2 right-2 w-64" : "top-4 right-4 w-80"} z-20`}>
         <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl border border-gray-200/50 overflow-hidden">
-          {/* Compact Controls */}
-          {!controlsExpanded && (
-            <div className={`p-2 flex items-center gap-1 ${screenSize === "mobile" ? "flex-col" : ""}`}>
-              {/* Quick zoom controls */}
-              <div
-                className={`flex items-center gap-1 bg-gray-50 rounded-lg p-1 ${screenSize === "mobile" ? "w-full" : ""}`}
-              >
-                <button
-                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
-                  onClick={handleZoomOut}
-                  disabled={zoom <= 0.1}
-                  title="Zoom out"
-                >
-                  <ZoomOut className="h-3 w-3" />
-                </button>
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <h3 className="font-semibold text-sm text-gray-800">Canvas Controls</h3>
+          </div>
 
-                <div className="px-2 py-1 text-xs font-mono bg-white rounded min-w-[2.5rem] text-center">
-                  {Math.round(zoom * 100)}%
+          {/* All Controls in One Panel */}
+          <div className="p-4 space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto">
+            {/* Quick Actions */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-3">Quick Actions</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={handleFitToScreen}
+                >
+                  <Maximize className="h-3 w-3" />
+                  Fit Screen
+                </button>
+                <button
+                  className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={handleResetView}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset View
+                </button>
+                <button
+                  className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={handleFullscreen}
+                >
+                  {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                  {isFullscreen ? "Exit Full" : "Fullscreen"}
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                    wasFixed
+                      ? "border-green-300 text-green-700 bg-green-50"
+                      : wasConverted
+                        ? "border-blue-300 text-blue-700 bg-blue-50"
+                        : "border-gray-300 hover:bg-gray-50"
+                  }`}
+                  onClick={() => setShowCode(!showCode)}
+                >
+                  {wasFixed ? (
+                    <CheckCircle className="h-3 w-3" />
+                  ) : wasConverted ? (
+                    <RefreshCw className="h-3 w-3" />
+                  ) : (
+                    <Code className="h-3 w-3" />
+                  )}
+                  {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : wasConverted ? "Converted" : "Show Code"}
+                </button>
+              </div>
+            </div>
+
+            {/* Zoom Controls */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-3">Zoom & Pan</label>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    onClick={handleZoomOut}
+                    disabled={zoom <= 0.1}
+                  >
+                    <ZoomOut className="h-3 w-3" />
+                  </button>
+                  <div className="flex-1 bg-gray-100 rounded-lg p-2 text-center">
+                    <span className="text-sm font-mono">{Math.round(zoom * 100)}%</span>
+                  </div>
+                  <button
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    onClick={handleZoomIn}
+                    disabled={zoom >= 5}
+                  >
+                    <ZoomIn className="h-3 w-3" />
+                  </button>
                 </div>
 
-                <button
-                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
-                  onClick={handleZoomIn}
-                  disabled={zoom >= 5}
-                  title="Zoom in"
-                >
-                  <ZoomIn className="h-3 w-3" />
-                </button>
+                {/* Pan Indicator */}
+                {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      <Move className="h-3 w-3" />
+                      <span>
+                        Pan: {Math.round(pan.x)}, {Math.round(pan.y)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Interaction mode toggle */}
-              <button
-                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
-                  interactionMode === "select" ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100"
-                }`}
-                onClick={() => setInteractionMode(interactionMode === "pan" ? "select" : "pan")}
-                title={interactionMode === "pan" ? "Switch to select mode" : "Switch to pan mode"}
-              >
-                {interactionMode === "pan" ? <Hand className="h-3 w-3" /> : <MousePointer2 className="h-3 w-3" />}
-              </button>
-
-              {/* Fullscreen toggle */}
-              <button
-                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-                onClick={handleFullscreen}
-                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-              </button>
-
-              {/* Expand controls - hide on mobile when space is limited */}
-              {screenSize !== "mobile" && (
-                <button
-                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-                  onClick={() => setControlsExpanded(true)}
-                  title="More controls"
-                >
-                  <Settings className="h-3 w-3" />
-                </button>
-              )}
             </div>
-          )}
 
-          {/* Expanded Controls */}
-          {controlsExpanded && (
-            <div className={screenSize === "mobile" ? "w-72" : "w-80"}>
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="font-semibold text-sm">Canvas Controls</h3>
+            {/* Interaction Mode */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-3">Interaction Mode</label>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
-                  onClick={() => setControlsExpanded(false)}
+                  className={`flex items-center justify-center gap-2 p-3 text-xs border rounded-lg transition-colors ${
+                    interactionMode === "pan" ? "bg-blue-50 border-blue-300 text-blue-700" : "hover:bg-gray-50"
+                  }`}
+                  onClick={() => setInteractionMode("pan")}
                 >
-                  <Minimize2 className="h-3 w-3" />
+                  <Hand className="h-4 w-4" />
+                  <span>Pan Mode</span>
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 p-3 text-xs border rounded-lg transition-colors ${
+                    interactionMode === "select" ? "bg-blue-50 border-blue-300 text-blue-700" : "hover:bg-gray-50"
+                  }`}
+                  onClick={() => setInteractionMode("select")}
+                >
+                  <MousePointer2 className="h-4 w-4" />
+                  <span>Select Mode</span>
                 </button>
               </div>
+              <div className="mt-2 text-xs text-gray-500">
+                {interactionMode === "pan"
+                  ? "Scroll to zoom • Drag to pan • Click elements to inspect"
+                  : "Click to select elements • Drag to move • Enhanced element interaction"}
+              </div>
+            </div>
 
-              {/* Tabs */}
-              <div className="flex border-b border-gray-200">
-                {[
-                  { id: "zoom", label: "View", icon: Navigation },
-                  { id: "theme", label: "Theme", icon: Palette },
-                  { id: "export", label: "Export", icon: Download },
-                ].map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    className={`flex-1 flex items-center justify-center gap-2 p-3 text-xs font-medium transition-colors ${
-                      activeTab === id
-                        ? "bg-blue-50 text-blue-600 border-b-2 border-blue-600"
-                        : "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+            {/* Grid Toggle */}
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-700">Show Grid</span>
+                <button
+                  className={`w-12 h-6 rounded-full transition-colors ${showGrid ? "bg-blue-600" : "bg-gray-300"}`}
+                  onClick={() => setShowGrid(!showGrid)}
+                >
+                  <div
+                    className={`w-5 h-5 bg-white rounded-full transition-transform ${
+                      showGrid ? "translate-x-6" : "translate-x-0.5"
                     }`}
-                    onClick={() => setActiveTab(id as any)}
+                  />
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-gray-500">Toggle background grid for better alignment</div>
+            </div>
+
+            {/* Theme Selection */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-3">Diagram Theme</label>
+              <select
+                value={theme}
+                onChange={handleThemeChange}
+                className="w-full p-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isRendering}
+              >
+                {Available_Themes.map((themeOption) => (
+                  <option key={themeOption} value={themeOption}>
+                    {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                  </option>
+                ))}
+              </select>
+
+              {/* Theme Preview Buttons */}
+              <div className="grid grid-cols-3 gap-1 mt-2">
+                {Available_Themes.slice(0, 6).map((themeOption) => (
+                  <button
+                    key={themeOption}
+                    className={`p-2 text-xs rounded border transition-colors ${
+                      theme === themeOption
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => {
+                      const event = { target: { value: themeOption } } as any
+                      handleThemeChange(event)
+                    }}
                   >
-                    <Icon className="h-3 w-3" />
-                    {label}
+                    {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
                   </button>
                 ))}
               </div>
+            </div>
 
-              {/* Tab Content */}
-              <div className="p-4">
-                {activeTab === "zoom" && (
-                  <div className="space-y-4">
-                    {/* Zoom Controls */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-2">Zoom Level</label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
-                          onClick={handleZoomOut}
-                          disabled={zoom <= 0.1}
-                        >
-                          <ZoomOut className="h-3 w-3" />
-                        </button>
+            {/* Export & Copy Options */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-3">Export & Copy</label>
+              <div className="space-y-2">
+                {/* Copy Options */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={handleCopyClick}
+                    disabled={isRendering}
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy SVG
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={handleCodeCopy}
+                  >
+                    <Code className="h-3 w-3" />
+                    Copy Code
+                  </button>
+                </div>
 
-                        <div className="flex-1 bg-gray-100 rounded-lg p-2 text-center">
-                          <span className="text-sm font-mono">{Math.round(zoom * 100)}%</span>
-                        </div>
+                {/* Download Options */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={() => handleDownload("svg")}
+                    disabled={isRendering}
+                  >
+                    <Download className="h-3 w-3" />
+                    Download SVG
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={() => handleDownload("png")}
+                    disabled={isRendering}
+                  >
+                    <Download className="h-3 w-3" />
+                    Download PNG
+                  </button>
+                </div>
+              </div>
+            </div>
 
-                        <button
-                          className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
-                          onClick={handleZoomIn}
-                          disabled={zoom >= 5}
-                        >
-                          <ZoomIn className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Interaction Mode */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-2">Interaction Mode</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
-                            interactionMode === "pan" ? "bg-blue-50 border-blue-300 text-blue-700" : "hover:bg-gray-50"
-                          }`}
-                          onClick={() => setInteractionMode("pan")}
-                        >
-                          <Hand className="h-3 w-3" />
-                          Pan
-                        </button>
-
-                        <button
-                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
-                            interactionMode === "select"
-                              ? "bg-blue-50 border-blue-300 text-blue-700"
-                              : "hover:bg-gray-50"
-                          }`}
-                          onClick={() => setInteractionMode("select")}
-                        >
-                          <MousePointer2 className="h-3 w-3" />
-                          Select
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* View Controls */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                        onClick={handleFitToScreen}
-                      >
-                        <Maximize className="h-3 w-3" />
-                        Fit Screen
-                      </button>
-
-                      <button
-                        className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                        onClick={handleResetView}
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        Reset
-                      </button>
-                    </div>
-
-                    {/* Grid Toggle */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-700">Show Grid</span>
-                      <button
-                        className={`w-10 h-6 rounded-full transition-colors ${
-                          showGrid ? "bg-blue-600" : "bg-gray-300"
-                        }`}
-                        onClick={() => setShowGrid(!showGrid)}
-                      >
-                        <div
-                          className={`w-4 h-4 bg-white rounded-full transition-transform ${
-                            showGrid ? "translate-x-5" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
+            {/* Status Information */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-2">Status</label>
+              <div className="space-y-2">
+                {isRendering && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
+                      <span>Rendering diagram...</span>
                     </div>
                   </div>
                 )}
 
-                {activeTab === "theme" && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-2">Diagram Theme</label>
-                      <select
-                        value={theme}
-                        onChange={handleThemeChange}
-                        className="w-full p-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={isRendering}
-                      >
-                        {Available_Themes.map((themeOption) => (
-                          <option key={themeOption} value={themeOption}>
-                            {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Theme Preview */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {Available_Themes.map((themeOption) => (
-                        <button
-                          key={themeOption}
-                          className={`p-2 text-xs rounded-lg border transition-colors ${
-                            theme === themeOption
-                              ? "border-blue-500 bg-blue-50 text-blue-700"
-                              : "border-gray-200 hover:border-gray-300"
-                          }`}
-                          onClick={() => {
-                            const event = { target: { value: themeOption } } as any
-                            handleThemeChange(event)
-                          }}
-                        >
-                          {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                        </button>
-                      ))}
+                {wasFixed && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                    <div className="flex items-center gap-2 text-xs text-green-700">
+                      <CheckCircle className="h-3 w-3" />
+                      <span>Syntax automatically fixed</span>
                     </div>
                   </div>
                 )}
 
-                {activeTab === "export" && (
-                  <div className="space-y-4">
-                    {/* Copy Options */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-2">Copy</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={handleCopyClick}
-                          disabled={isRendering}
-                        >
-                          <Copy className="h-3 w-3" />
-                          SVG
-                        </button>
-
-                        <button
-                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={handleCodeCopy}
-                        >
-                          <Code className="h-3 w-3" />
-                          Code
-                        </button>
-                      </div>
+                {wasConverted && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Converted from old syntax</span>
                     </div>
+                  </div>
+                )}
 
-                    {/* Download Options */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-2">Download</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={() => handleDownload("svg")}
-                          disabled={isRendering}
-                        >
-                          <Download className="h-3 w-3" />
-                          SVG
-                        </button>
-
-                        <button
-                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={() => handleDownload("png")}
-                          disabled={isRendering}
-                        >
-                          <Download className="h-3 w-3" />
-                          PNG
-                        </button>
-                      </div>
-                    </div>
-                    {/* Code View Toggle */}
-                    <div>
-                      <button
-                        className={`w-full flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
-                          wasFixed
-                            ? "border-green-300 text-green-700 bg-green-50"
-                            : wasConverted
-                              ? "border-blue-300 text-blue-700 bg-blue-50"
-                              : "border-gray-300 hover:bg-gray-50"
-                        }`}
-                        onClick={() => setShowCode(!showCode)}
-                      >
-                        {wasFixed ? (
-                          <CheckCircle className="h-3 w-3" />
-                        ) : wasConverted ? (
-                          <RefreshCw className="h-3 w-3" />
-                        ) : (
-                          <Code className="h-3 w-3" />
-                        )}
-                        {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : wasConverted ? "Converted" : "Show Code"}
-                      </button>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+                    <div className="flex items-center gap-2 text-xs text-red-700">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>Rendering error occurred</span>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
-
-      {/* Interactive Instructions - Responsive */}
-      {!showControls && !isRendering && !error && !controlsExpanded && (
-        <div
-          className={`absolute ${
-            screenSize === "mobile" ? "bottom-4 left-2 right-2" : "bottom-6 left-6"
-          } z-10 bg-black/80 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-xl opacity-60 hover:opacity-100 transition-all duration-300`}
-        >
-          <div className="flex items-center gap-3">
-            {interactionMode === "pan" ? <Hand className="h-4 w-4" /> : <MousePointer2 className="h-4 w-4" />}
-            <span className={screenSize === "mobile" ? "text-xs" : ""}>
-              {screenSize === "mobile"
-                ? "Pinch to zoom • Drag to pan"
-                : `${interactionMode === "pan" ? "Scroll to zoom • Drag to pan" : "Click to select • Drag elements"} • Hover for controls`}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Pan Indicator */}
-      {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && !isDragging && (
-        <div
-          className={`absolute ${
-            screenSize === "mobile" ? "top-2 left-2" : "top-6 left-6"
-          } z-10 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg`}
-        >
-          <div className="flex items-center gap-2">
-            <Move className="h-3 w-3" />
-            <span>
-              Pan: {Math.round(pan.x)}, {Math.round(pan.y)}
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Code View */}
       {showCode && (
