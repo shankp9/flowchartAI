@@ -627,6 +627,29 @@ export function Mermaid({
             gantt: {
               useMaxWidth: false,
             },
+            er: {
+              useMaxWidth: false,
+            },
+            gitGraph: {
+              useMaxWidth: false,
+            },
+            class: {
+              useMaxWidth: false,
+            },
+            state: {
+              useMaxWidth: false,
+            },
+            // Add more diagram type configurations
+            pie: {
+              useMaxWidth: false,
+            },
+            requirement: {
+              useMaxWidth: false,
+            },
+            c4: {
+              useMaxWidth: false,
+              diagramPadding: 20,
+            },
           })
 
           // Force mermaid to reinitialize completely for theme changes
@@ -762,20 +785,25 @@ export function Mermaid({
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
 
           let errorContent = `
-          <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
-          <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
-        `
-
-          if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
-            errorContent += `
-            <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
-              <strong class="block mb-2">Common fixes:</strong>
-              • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
-              • Ensure participant names don't contain spaces or special characters<br>
-              • Verify all connections have proper arrow syntax (--&gt;)<br>
-              • Make sure all brackets and quotes are properly closed
-            </div>
+            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
+            <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
           `
+
+          if (
+            errorMessage.includes("Parse error") ||
+            errorMessage.includes("Expecting") ||
+            errorMessage.includes("Syntax error")
+          ) {
+            errorContent += `
+              <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+                <strong class="block mb-2">Common fixes:</strong>
+                • Check diagram type declaration (graph TD, sequenceDiagram, etc.)<br>
+                • Ensure proper spacing between elements<br>
+                • Check for missing or extra characters<br>
+                • Verify all brackets and quotes are properly closed<br>
+                • Try simplifying complex parts of your diagram
+              </div>
+            `
           }
 
           const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"

@@ -47,12 +47,27 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     "graph",
     "flowchart",
     "sequencediagram",
-    "classdiagram",
+    "classDiagram",
+    "classDiagram-v2",
+    "stateDiagram",
+    "stateDiagram-v2",
+    "erDiagram",
     "journey",
     "gantt",
-    "statediagram",
-    "erdiagram",
     "pie",
+    "gitGraph",
+    "requirementDiagram",
+    "c4Context",
+    "c4Container",
+    "c4Component",
+    "c4Dynamic",
+    "c4Deployment",
+    "mindmap",
+    "timeline",
+    "quadrantChart",
+    "sankey",
+    "block",
+    "xy",
   ]
 
   const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
@@ -397,7 +412,16 @@ export function sanitizeMermaidCode(code: string): string {
       line.startsWith("gantt") ||
       line.startsWith("statediagram") ||
       line.startsWith("erdiagram") ||
-      line.startsWith("pie")
+      line.startsWith("pie") ||
+      line.startsWith("gitgraph") ||
+      line.startsWith("requirementdiagram") ||
+      line.startsWith("c4") ||
+      line.startsWith("mindmap") ||
+      line.startsWith("timeline") ||
+      line.startsWith("quadrantchart") ||
+      line.startsWith("sankey") ||
+      line.startsWith("block") ||
+      line.startsWith("xy")
     ) {
       diagramStartIndex = i
       break
@@ -520,19 +544,43 @@ function ensureV11Compatibility(code: string): string {
         "flowchart",
         "sequenceDiagram",
         "classDiagram",
+        "classDiagram-v2",
+        "stateDiagram",
+        "stateDiagram-v2",
+        "erDiagram",
         "journey",
         "gantt",
-        "stateDiagram",
-        "erDiagram",
         "pie",
+        "gitGraph",
+        "requirementDiagram",
+        "c4Context",
+        "c4Container",
+        "c4Component",
+        "c4Dynamic",
+        "c4Deployment",
+        "mindmap",
+        "timeline",
+        "quadrantChart",
+        "sankey",
+        "block",
+        "xy",
       ]
-      const startsWithValid = validFirstLines.some((valid) => line.toLowerCase().startsWith(valid.toLowerCase()))
+      const startsWithValid = validFirstLines.some(
+        (valid) =>
+          line.toLowerCase().startsWith(valid.toLowerCase()) || line.toLowerCase().includes(valid.toLowerCase()),
+      )
 
       if (!startsWithValid) {
-        // Default to flowchart if no valid start
-        processedLines.push("graph TD")
-        line = `    A[${line}] --> B[End]`
+        // Default to flowchart if no valid start, but don't force it for all cases
+        if (line.trim().length > 0) {
+          processedLines.push(line)
+        } else {
+          processedLines.push("graph TD")
+        }
+      } else {
+        processedLines.push(line)
       }
+      continue
     }
 
     // Ensure lines don't exceed complexity limits

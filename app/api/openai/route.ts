@@ -128,6 +128,19 @@ CRITICAL COMPATIBILITY RULES FOR MERMAID 11.6.0:
 4. NEVER use deprecated syntax or newer features not available in v11.6.0
 5. Stick to simple, proven patterns that have been stable for years
 
+SUPPORTED DIAGRAM TYPES IN MERMAID 11.6.0:
+- graph TD/LR/TB/RL (flowchart)
+- sequenceDiagram
+- classDiagram
+- stateDiagram
+- erDiagram
+- journey
+- gantt
+- pie
+- gitGraph
+- requirementDiagram
+- c4Context/c4Container/c4Component
+
 MANDATORY SYNTAX VALIDATION:
 - Every line must follow exact Mermaid specification
 - No custom or experimental syntax elements
@@ -148,50 +161,6 @@ SEQUENCE DIAGRAM RULES (v11.6.0 compatible):
 - Arrow syntax: A->>B: Message, A-->>B: Response, A-xB: Cancel
 - NEVER start arrows without sender: CORRECT "A->>B", INCORRECT "->>B"
 - NEVER use: advanced formatting, complex interactions
-
-CLASS DIAGRAM RULES (v11.6.0 compatible):
-- Start with: classDiagram
-- Class syntax: class ClassName, class ClassName { }
-- Members: +publicMethod(), -privateField: type
-- Relationships: ClassA --> ClassB, ClassA --|> ClassB
-- NEVER combine: class definitions with relationships on same line
-- NEVER use: advanced annotations, complex styling
-
-ER DIAGRAM RULES (v11.6.0 compatible):
-- Start with: erDiagram
-- Entity syntax: ENTITY { type field }
-- Relationship syntax: ENTITY ||--o{ OTHER : "relationship"
-- NEVER use: complex field types, advanced relationships
-
-JOURNEY RULES (v11.6.0 compatible):
-- Start with: journey, title: Title
-- Section syntax: section SectionName
-- Task syntax: TaskName: score: Actor
-- NEVER use: complex formatting, advanced features
-
-GANTT RULES (v11.6.0 compatible):
-- Start with: gantt, title Project Schedule
-- Date format: dateFormat YYYY-MM-DD
-- Section syntax: section SectionName
-- Task syntax: TaskName :YYYY-MM-DD, duration
-- NEVER use: complex dependencies, advanced formatting
-
-ABSOLUTELY FORBIDDEN:
-- Custom CSS styling within diagrams
-- Advanced theming beyond basic themes
-- Experimental syntax not in v11.6.0
-- Complex formatting or layout commands
-- Non-standard arrow types or connectors
-- Advanced labeling or annotation features
-- Custom node shapes beyond basic set
-- Complex sub-diagrams or nested structures
-
-ERROR PREVENTION:
-- Double-check every line for v11.6.0 compatibility
-- Use only syntax that existed in early Mermaid versions
-- Avoid any features introduced after v11.6.0
-- Test syntax against basic Mermaid parser rules
-- Ensure all elements have proper closing tags/syntax
 
 RESPONSE FORMAT:
 - Start immediately with diagram type (no explanation)
