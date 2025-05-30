@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
+import type { APIRequestBody } from "@/types"
+import { APIError, handleError, ERROR_MESSAGES } from "@/lib/errors"
+import { APP_CONFIG } from "@/lib/constants"
 
 export async function POST(req: NextRequest) {
   try {
+    const body: APIRequestBody = await req.json()
+
     const {
       messages,
       model = "gpt-3.5-turbo",
@@ -10,24 +15,22 @@ export async function POST(req: NextRequest) {
       currentDiagram = "",
       isModification = false,
       diagramType = null,
-    } = await req.json()
+    } = body
 
-    // Get API key from environment variables
+    // Validate API key
     const apiKey = process.env.OPENAI_API_KEY
-
     if (!apiKey) {
       console.error("OPENAI_API_KEY environment variable is not set")
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 })
+      throw new APIError(ERROR_MESSAGES.API_KEY_MISSING, 500)
     }
 
+    // Validate request body
     if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "Messages array is required" }, { status: 400 })
+      throw new APIError("Messages array is required", 400)
     }
 
     // Check if this is a summary request
-    const isSummaryRequest = messages.some(
-      (msg: any) => msg.role === "system" && msg.content.includes("diagram analyst"),
-    )
+    const isSummaryRequest = messages.some((msg) => msg.role === "system" && msg.content.includes("diagram analyst"))
 
     let systemMessage
     if (isSummaryRequest) {
@@ -53,7 +56,7 @@ Respond ONLY with valid JSON in this exact format:
         retryAttempt > 0
           ? `
 
-RETRY ATTEMPT ${retryAttempt + 1}/3 - PREVIOUS ERRORS DETECTED:
+RETRY ATTEMPT ${retryAttempt + 1}/${APP_CONFIG.MAX_RETRIES} - PREVIOUS ERRORS DETECTED:
 ${previousErrors.map((err) => `- ${err}`).join("\n")}
 
 CRITICAL FIXES NEEDED:
@@ -120,22 +123,6 @@ CLASS DIAGRAM RULES:
 - Class format: class ClassName { +method() }
 - Relationship format: ClassA --> ClassB
 
-EXAMPLE VALID FLOWCHART:
-graph TD
-    A[Start] --> B[Process]
-    B --> C{Decision}
-    C -->|Yes| D[Success]
-    C -->|No| E[Error]
-    D --> F[End]
-    E --> F
-
-EXAMPLE VALID SEQUENCE:
-sequenceDiagram
-    participant U as User
-    participant S as System
-    U->>S: Request
-    S-->>U: Response
-
 FORBIDDEN PATTERNS:
 - Never use: ERROR, IDENTIFYING, syntax error, parse error
 - Never start lines with just arrows: -->> or ->>
@@ -154,20 +141,15 @@ Generate ONLY the Mermaid code that will render perfectly without any syntax err
       }
     }
 
-    // Process the last user message and enhance it with context if needed
+    // Process messages for modifications
     const processedMessages = [...messages]
-
     if (!isSummaryRequest && isModification && currentDiagram) {
-      // Get the last user message
       const lastMessage = processedMessages[processedMessages.length - 1]
-
       if (lastMessage && lastMessage.role === "user") {
-        // Enhance the user message with context for the AI, but this won't be shown to the user
         const enhancedContent = `${lastMessage.content}
 
 Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
 
-        // Replace the last message with the enhanced version
         processedMessages[processedMessages.length - 1] = {
           ...lastMessage,
           content: enhancedContent,
@@ -175,6 +157,7 @@ Based on the current diagram, please modify it according to the request while ma
       }
     }
 
+    // Make API request
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -185,7 +168,7 @@ Based on the current diagram, please modify it according to the request while ma
         model,
         messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
-        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
+        temperature: retryAttempt > 0 ? 0.1 : 0.2,
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
@@ -195,13 +178,14 @@ Based on the current diagram, please modify it according to the request while ma
       console.error("OpenAI API error:", response.status, errorData)
 
       if (response.status === 401) {
-        return NextResponse.json(
-          { error: "Invalid OpenAI API key. Please check your API key configuration." },
-          { status: 401 },
-        )
+        throw new APIError("Invalid OpenAI API key. Please check your API key configuration.", 401)
       }
 
-      return NextResponse.json({ error: `OpenAI API error: ${response.status}` }, { status: response.status })
+      if (response.status === 429) {
+        throw new APIError(ERROR_MESSAGES.RATE_LIMIT, 429)
+      }
+
+      throw new APIError(`OpenAI API error: ${response.status}`, response.status)
     }
 
     // Handle non-streaming response for summary requests
@@ -211,6 +195,7 @@ Based on the current diagram, please modify it according to the request while ma
       return new Response(content, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache",
         },
       })
     }
@@ -267,10 +252,20 @@ Based on the current diagram, please modify it according to the request while ma
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
       },
     })
   } catch (error) {
-    console.error("API route error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const appError = handleError(error)
+    console.error("API route error:", appError)
+
+    return NextResponse.json(
+      {
+        error: appError.message,
+        code: appError.code,
+        ...(process.env.NODE_ENV === "development" && { stack: appError.stack }),
+      },
+      { status: appError.statusCode },
+    )
   }
 }
