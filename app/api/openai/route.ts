@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       systemMessage = {
         role: "system",
         content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
-        
+
 Available diagram types:
 - Flowchart: graph TD or graph LR
 - Sequence diagram: sequenceDiagram
@@ -51,6 +51,15 @@ Available diagram types:
 - User journey: journey
 - Gantt chart: gantt
 - C4 diagram: C4Context, C4Container, C4Component
+- State diagram: stateDiagram-v2
+- Entity Relationship: erDiagram
+- Pie chart: pie
+
+Important rules:
+1. Always use proper Mermaid syntax
+2. For journey diagrams, use proper task format: "Task name: score: Actor"
+3. Ensure all syntax is valid and complete
+4. Wrap response in code blocks with mermaid language identifier
 
 Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
       }
@@ -65,8 +74,8 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
       body: JSON.stringify({
         model,
         messages: [systemMessage, ...messages],
-        stream: !isSummaryRequest, // Don't stream for summary requests
-        temperature: 0.7,
+        stream: !isSummaryRequest,
+        temperature: 0.3, // Lower temperature for more consistent output
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })

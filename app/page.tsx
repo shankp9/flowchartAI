@@ -1,7 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Lightbulb, Sparkles } from "lucide-react"
+import { useEffect, useState, useCallback } from "react"
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Lightbulb,
+  Sparkles,
+  AlertCircle,
+} from "lucide-react"
 
 import { Mermaid } from "@/components/Mermaids"
 import { ChatInput } from "@/components/ChatInput"
@@ -23,12 +31,13 @@ export default function Home() {
   const [diagramCollapsed, setDiagramCollapsed] = useState(false)
   const [diagramSummary, setDiagramSummary] = useState<string>("")
   const [suggestions, setSuggestions] = useState<string[]>([])
+  const [error, setError] = useState<string>("")
 
   useEffect(() => {
     setIsClient(true)
   }, [])
 
-  const generateSummaryAndSuggestions = async (code: string) => {
+  const generateSummaryAndSuggestions = useCallback(async (code: string) => {
     try {
       const summaryResponse = await fetch("/api/openai", {
         method: "POST",
@@ -80,9 +89,9 @@ export default function Home() {
     } catch (error) {
       console.error("Error generating summary:", error)
     }
-  }
+  }, [])
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!draftMessage.trim()) {
       return
     }
@@ -97,6 +106,7 @@ export default function Home() {
     setDraftMessage("")
     setDraftOutputCode("")
     setIsLoading(true)
+    setError("")
 
     try {
       const response = await fetch("/api/openai", {
@@ -111,7 +121,8 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to generate diagram")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to generate diagram")
       }
 
       const data = response.body
@@ -140,71 +151,78 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Request error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [draftMessage, messages, generateSummaryAndSuggestions])
 
-  const handleSuggestionClick = async (suggestion: string) => {
-    const improvementPrompt = `Based on the current diagram, ${suggestion.toLowerCase()}. Please update the diagram accordingly.`
+  const handleSuggestionClick = useCallback(
+    async (suggestion: string) => {
+      const improvementPrompt = `Based on the current diagram, ${suggestion.toLowerCase()}. Please update the diagram accordingly.`
 
-    const newMessage: Message = {
-      role: "user",
-      content: improvementPrompt,
-    }
-    const newMessages = [...messages, newMessage]
-
-    setMessages(newMessages)
-    setDraftMessage("")
-    setDraftOutputCode("")
-    setIsLoading(true)
-
-    try {
-      const response = await fetch("/api/openai", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: newMessages,
-          model: "gpt-3.5-turbo",
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to generate diagram")
+      const newMessage: Message = {
+        role: "user",
+        content: improvementPrompt,
       }
+      const newMessages = [...messages, newMessage]
 
-      const data = response.body
-      if (!data) {
-        throw new Error("No response data received.")
+      setMessages(newMessages)
+      setDraftMessage("")
+      setDraftOutputCode("")
+      setIsLoading(true)
+      setError("")
+
+      try {
+        const response = await fetch("/api/openai", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: newMessages,
+            model: "gpt-3.5-turbo",
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to generate diagram")
+        }
+
+        const data = response.body
+        if (!data) {
+          throw new Error("No response data received.")
+        }
+
+        const reader = data.getReader()
+        const decoder = new TextDecoder()
+        let done = false
+        let code = ""
+
+        while (!done) {
+          const { value, done: doneReading } = await reader.read()
+          done = doneReading
+          const chunkValue = decoder.decode(value)
+          code += chunkValue
+          setDraftOutputCode((prevCode) => prevCode + chunkValue)
+        }
+
+        const finalCode = parseCodeFromMessage(code)
+        setOutputCode(finalCode)
+
+        if (finalCode) {
+          await generateSummaryAndSuggestions(finalCode)
+        }
+      } catch (error) {
+        console.error("Request error:", error)
+        setError(error instanceof Error ? error.message : "An error occurred")
+      } finally {
+        setIsLoading(false)
       }
-
-      const reader = data.getReader()
-      const decoder = new TextDecoder()
-      let done = false
-      let code = ""
-
-      while (!done) {
-        const { value, done: doneReading } = await reader.read()
-        done = doneReading
-        const chunkValue = decoder.decode(value)
-        code += chunkValue
-        setDraftOutputCode((prevCode) => prevCode + chunkValue)
-      }
-
-      const finalCode = parseCodeFromMessage(code)
-      setOutputCode(finalCode)
-
-      if (finalCode) {
-        await generateSummaryAndSuggestions(finalCode)
-      }
-    } catch (error) {
-      console.error("Request error:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    },
+    [messages, generateSummaryAndSuggestions],
+  )
 
   if (!isClient) {
     return (
@@ -270,6 +288,12 @@ export default function Home() {
                     <div className="flex items-center gap-2 text-gray-600 p-4">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                       <span className="text-sm">Generating diagram...</span>
+                    </div>
+                  )}
+                  {error && (
+                    <div className="flex items-center gap-2 text-red-600 p-4 bg-red-50 rounded-lg">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm">{error}</span>
                     </div>
                   )}
                 </div>
