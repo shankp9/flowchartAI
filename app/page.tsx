@@ -538,13 +538,15 @@ export default function Home() {
   }, [draftMessage, messages, handleSubmit])
 
   // Add this after the toggleCanvasVisibility function (around line 450)
-  const handleThemeChange = (newTheme: "default" | "neutral" | "dark" | "forest" | "base") => {
+  const handleThemeChange = useCallback((newTheme: "default" | "neutral" | "dark" | "forest" | "base") => {
     setCurrentTheme(newTheme)
     setShowThemeSelector(false)
     if (typeof window !== "undefined") {
       localStorage.setItem("mermaid-theme", newTheme)
     }
-  }
+    // Force a re-render by updating a timestamp or trigger
+    setOutputCode((prev) => prev) // This will trigger the Mermaid component to re-render with new theme
+  }, [])
 
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
