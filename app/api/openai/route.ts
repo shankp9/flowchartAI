@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
       diagramType = null,
     } = await req.json()
 
-    // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY
 
     if (!apiKey) {
@@ -20,114 +19,101 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 })
     }
 
-    if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "Messages array is required" }, { status: 400 })
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: "Messages array is required and cannot be empty" }, { status: 400 })
     }
 
-    // Check if this is a summary request
     const isSummaryRequest = messages.some(
       (msg: any) => msg.role === "system" && msg.content.includes("diagram analyst"),
     )
 
-    let systemMessage
-    if (isSummaryRequest) {
-      systemMessage = {
-        role: "system",
-        content: `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
-1) A brief summary of what the diagram shows (max 50 words)
-2) Three specific, actionable suggestions for improving or expanding the diagram
+    let systemMessageContent: string
 
-Respond ONLY with valid JSON in this exact format:
-{
-  "summary": "Brief description of the diagram",
-  "suggestions": [
-    "First specific suggestion",
-    "Second specific suggestion", 
-    "Third specific suggestion"
-  ]
-}`,
-      }
+    if (isSummaryRequest) {
+      systemMessageContent = `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
+    1) A brief summary of what the diagram shows (max 50 words)
+    2) Three specific, actionable suggestions for improving or expanding the diagram
+    
+    Respond ONLY with valid JSON in this exact format:
+    {
+      "summary": "Brief description of the diagram",
+      "suggestions": [
+        "First specific suggestion",
+        "Second specific suggestion", 
+        "Third specific suggestion"
+      ]
+    }`
     } else {
-      // Enhanced system message with retry-specific instructions
       const retryInstructions =
         retryAttempt > 0
           ? `
-
 CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
-- This is a retry attempt due to previous syntax errors
 - Previous errors: ${previousErrors.join("; ")}
-- Use ONLY the most basic, validated Mermaid syntax
-- Avoid complex features that might cause parsing errors
-- Start directly with diagram type keyword
-- Use simple node names without special characters
-- Ensure all arrows and connections are properly formatted
-- Double-check every line for syntax correctness
-- NO explanatory text, ONLY valid Mermaid code
-
-RETRY FOCUS:
-${retryAttempt === 1 ? "- Simplify syntax and use basic examples" : ""}
-${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
+- YOU MUST START WITH A VALID DIAGRAM KEYWORD (e.g., sequenceDiagram, graph TD).
+- Double-check every line for Mermaid syntax correctness, especially for sequence diagrams.
+- NO EXPLANATORY TEXT. ONLY VALID MERMAID CODE.
+${retryAttempt === 1 ? "- Focus: Simplify syntax, use basic examples. Ensure correct arrow types." : ""}
+${retryAttempt === 2 ? "- Focus: Use minimal, proven syntax patterns ONLY. ABSOLUTELY START WITH DIAGRAM KEYWORD. Verify all actor interactions." : ""}
 `
           : ""
 
-      // Context handling for modifications
-      const contextInstructions =
+      const modificationContext =
         isModification && currentDiagram
           ? `
-
 MODIFICATION CONTEXT:
-You are modifying an existing diagram. Here is the current diagram code:
-
+You are modifying an existing diagram. Current diagram:
 \`\`\`mermaid
 ${currentDiagram}
 \`\`\`
-
 MODIFICATION RULES:
-- Build upon the existing diagram structure
-- Maintain existing nodes and connections where possible
-- Add the requested improvements while preserving the core flow
-- Keep the same diagram type unless explicitly asked to change
-- Ensure all existing functionality remains intact
-- Only modify what's specifically requested
+- Build upon the existing diagram.
+- Preserve existing nodes/connections unless modification is requested.
+- Maintain the original diagram type unless explicitly asked to change.
 `
           : ""
 
-      systemMessage = {
-        role: "system",
-        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
+      const diagramTypeHint = diagramType
+        ? `The user likely intends a '${diagramType}' diagram. Prioritize this type if appropriate.`
+        : `If unsure of diagram type, try to infer from the request or default to 'graph TD' for flowcharts or 'sequenceDiagram' for interactions.`
 
-CRITICAL RULES:
-1. NEVER include explanatory text before or after the diagram code
-2. ALWAYS start your response directly with the diagram type keyword
-3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
-4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
-5. NEVER start a line with just an arrow (-->> or ->>)
-6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
-7. ALWAYS use proper Mermaid syntax for each diagram type
-8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
+      systemMessageContent = `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
 
-SEQUENCE DIAGRAM SYNTAX RULES:
-- CORRECT: "ParticipantA ->> ParticipantB: Message"
-- CORRECT: "ParticipantA -->> ParticipantB: Response"
-- INCORRECT: "->> ParticipantB: Message" (missing sender)
-- INCORRECT: "-->> ParticipantB: Response" (missing sender)
-- ARROWS must be correctly formed (e.g., \`->\`, \`-->\`, \`->>\`, \`-->>\`, \`-x\`, \`--x\`). A single dash \`-\` is NOT a valid arrow for messages.
-- MESSAGE TEXT after the colon (:) MUST be simple. Avoid colons or complex structures within the message text itself that could be misinterpreted as new diagram elements.
+CRITICAL FIRST LINE RULE:
+Your response MUST start *directly* with a valid Mermaid diagram type keyword on the VERY FIRST line. NO other text, explanation, or markdown before it.
+Examples of CORRECT first lines:
+- graph TD
+- sequenceDiagram
+- classDiagram
 
-FLOWCHART SYNTAX RULES:
-- CORRECT: "A[Start] --> B[Process] --> C[End]"
-- INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
+GENERAL CRITICAL RULES:
+1. NO EXPLANATORY TEXT before or after the diagram code. Your entire response is the Mermaid code.
+2. Node names should be simple, alphanumeric, or enclosed in quotes if they contain spaces/special characters (e.g., "Node with spaces").
+3. Ensure all syntax follows official Mermaid documentation.
+${diagramTypeHint}
+${modificationContext}
+${retryInstructions}
 
-ER DIAGRAM SYNTAX RULES:
-- CORRECT: "CUSTOMER ||--o{ ORDER : places"
-- CORRECT: "USER { int id PK }"
-- INCORRECT: "USER ERROR -- ERROR_TYPE : Below"
+SEQUENCE DIAGRAM CRITICAL RULES:
+1. Start with \`sequenceDiagram\`.
+2. Declare participants/actors if they are not implicitly defined by messages. Explicit declaration is preferred:
+   \`participant Alice\`
+   \`actor Bob\`
+3. Messages MUST follow the format: \`SenderArrowReceiver: Message Text\`.
+   - Arrow types: \`->>\` (solid line with arrow), \`-->>\` (dashed line with arrow), \`->\` (solid line, no arrow head for synchronous return), \`-->\` (dashed line, no arrow head for asynchronous return).
+   - Example: \`Alice->>Bob: Hello Bob!\`
+   - Example: \`Bob-->>Alice: Hi Alice!\`
+4. DO NOT put colons in actor/participant names (e.g., INCORRECT: \`Actor1:System\`). Use "as" for aliases: \`participant A as Alice_System\`.
+5. DO NOT combine participant declaration with message sending on the same line like \`Alice: Hello Bob! ->> Bob\`.
+6. Ensure every message line clearly defines a Sender, an Arrow, a Receiver, and then a Colon followed by the message text.
+   - CORRECT: \`User->>API: Request data\`
+   - INCORRECT: \`User API: Request data\` (Missing arrow and colon structure)
+   - INCORRECT: \`User ->> API Request data\` (Missing colon before message text)
+   - INCORRECT: \`User: ->> API: Request data\` (Colon in sender part)
 
-CLASS DIAGRAM SYNTAX RULES:
-- CORRECT: "class User { +String name +login() }"
-- CORRECT: "User --> System"
-- INCORRECT: "class User ERROR IDENTIFYING"
+FLOWCHART (graph TD/LR) CRITICAL RULES:
+1. Start with \`graph TD\` (top-down) or \`graph LR\` (left-right).
+2. Nodes are defined like: \`nodeId[Node Text]\` (rectangle), \`nodeId(Node Text)\` (rounded), \`nodeId((Node Text))\` (circle), \`nodeId{Node Text}\` (diamond).
+3. Connections use arrows: \`A --> B\`, \`A --- B\`, \`A -- text --> B\`.
 
 VALID DIAGRAM TYPES:
 - graph TD / graph LR (flowchart)
@@ -135,33 +121,42 @@ VALID DIAGRAM TYPES:
 - classDiagram
 - journey
 - gantt
-- stateDiagram-v2
+- stateDiagram-v2 (or stateDiagram)
 - erDiagram
 - pie
+- mindmap
+- timeline
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
-      }
+RESPOND WITH VALID MERMAID CODE ONLY.
+`
     }
 
-    // Process the last user message and enhance it with context if needed
+    const systemMessage = {
+      role: "system",
+      content: systemMessageContent,
+    }
+
     const processedMessages = [...messages]
-
     if (!isSummaryRequest && isModification && currentDiagram) {
-      // Get the last user message
-      const lastMessage = processedMessages[processedMessages.length - 1]
-
-      if (lastMessage && lastMessage.role === "user") {
-        // Enhance the user message with context for the AI, but this won't be shown to the user
-        const enhancedContent = `${lastMessage.content}
-
-Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
-
-        // Replace the last message with the enhanced version
+      const lastUserMessage = processedMessages[processedMessages.length - 1]
+      if (lastUserMessage && lastUserMessage.role === "user") {
+        const enhancedContent = `${lastUserMessage.content}\n\n(Instruction: Modify the existing diagram provided in the system prompt context based on this request.)`
         processedMessages[processedMessages.length - 1] = {
-          ...lastMessage,
+          ...lastUserMessage,
           content: enhancedContent,
         }
       }
+    }
+
+    const apiRequestBody = {
+      model,
+      messages: [systemMessage, ...processedMessages],
+      stream: !isSummaryRequest,
+      temperature: retryAttempt > 0 ? 0.15 * retryAttempt + 0.1 : 0.2,
+      max_tokens: isSummaryRequest ? 350 : 1500,
+      top_p: 1,
+      frequency_penalty: 0.05,
+      presence_penalty: 0.05,
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -170,96 +165,62 @@ Based on the current diagram, please modify it according to the request while ma
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: [systemMessage, ...processedMessages],
-        stream: !isSummaryRequest,
-        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
-        max_tokens: isSummaryRequest ? 300 : 1000,
-      }),
+      body: JSON.stringify(apiRequestBody),
     })
 
     if (!response.ok) {
       const errorData = await response.text()
       console.error("OpenAI API error:", response.status, errorData)
-
-      if (response.status === 401) {
-        return NextResponse.json(
-          { error: "Invalid OpenAI API key. Please check your API key configuration." },
-          { status: 401 },
-        )
+      let errorMessage = `OpenAI API error: ${response.status}`
+      try {
+        const parsedError = JSON.parse(errorData)
+        if (parsedError.error && parsedError.error.message) {
+          errorMessage = `OpenAI: ${parsedError.error.message}`
+        }
+      } catch (e) {
+        /* Ignore parsing error */
       }
 
-      return NextResponse.json({ error: `OpenAI API error: ${response.status}` }, { status: response.status })
+      if (response.status === 401) errorMessage = "Invalid OpenAI API key."
+      else if (response.status === 429) errorMessage = "OpenAI API rate limit exceeded."
+
+      return NextResponse.json({ error: errorMessage }, { status: response.status })
     }
 
-    // Handle non-streaming response for summary requests
     if (isSummaryRequest) {
       const data = await response.json()
       const content = data.choices?.[0]?.message?.content || ""
-      return new Response(content, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      })
+      return new Response(content, { headers: { "Content-Type": "application/json; charset=utf-8" } })
     }
-
-    // Handle streaming response for diagram generation
-    const encoder = new TextEncoder()
-    const decoder = new TextDecoder()
 
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader()
         if (!reader) {
-          controller.close()
+          controller.error(new Error("Failed to get ReadableStream reader."))
           return
         }
-
+        const decoder = new TextDecoder()
         try {
           while (true) {
             const { done, value } = await reader.read()
             if (done) break
-
             const chunk = decoder.decode(value)
-            const lines = chunk.split("\n")
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6)
-                if (data === "[DONE]") {
-                  controller.close()
-                  return
-                }
-
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    controller.enqueue(encoder.encode(content))
-                  }
-                } catch (e) {
-                  // Skip invalid JSON
-                }
-              }
-            }
+            controller.enqueue(new TextEncoder().encode(chunk))
           }
         } catch (error) {
           console.error("Stream error:", error)
           controller.error(error)
         } finally {
           reader.releaseLock()
+          controller.close()
         }
       },
     })
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-    })
-  } catch (error) {
+    return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } })
+  } catch (error: any) {
     console.error("API route error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })
   }
 }

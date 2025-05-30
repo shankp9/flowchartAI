@@ -21,7 +21,6 @@ export function parseCodeFromMessage(message: string): string {
   return match ? match[1].trim() : message.trim()
 }
 
-// Enhanced validation function with detailed error reporting
 export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
@@ -36,13 +35,11 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     .filter((line) => line.length > 0)
 
   if (lines.length === 0) {
-    errors.push("No content found")
+    errors.push("No content found after trimming")
     return { isValid: false, errors }
   }
 
   const firstLine = lines[0].toLowerCase()
-
-  // Check if it starts with a valid diagram type
   const validStarts = [
     "graph",
     "flowchart",
@@ -50,112 +47,96 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     "classdiagram",
     "journey",
     "gantt",
-    "statediagram", // Also allow statediagram-v2 implicitly by checking start
+    "statediagram",
+    "statediagram-v2",
     "erdiagram",
     "pie",
-    "mindmap", // Added mindmap
-    "timeline", // Added timeline
+    "mindmap",
+    "timeline",
     "c4context",
     "c4container",
     "c4component",
     "c4dynamic",
-    "c4deployment", // Added C4
+    "c4deployment",
   ]
 
-  const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
-  if (!hasValidStart) {
+  if (!validStarts.some((start) => firstLine.startsWith(start))) {
     errors.push(
-      `Invalid diagram type. Must start with a known Mermaid type (e.g., graph TD, sequenceDiagram). Found: "${firstLine.substring(0, 30)}..."`,
+      `Invalid diagram type. Must start with a known keyword (e.g., 'graph TD', 'sequenceDiagram'). Found: "${firstLine.substring(0, 30)}..."`,
     )
   }
 
-  // Diagram-specific validation
   if (firstLine.startsWith("sequencediagram")) {
-    validateSequenceDiagram(lines.slice(1), errors)
-  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
-    validateFlowchart(lines.slice(1), errors)
-  } else if (firstLine.startsWith("classdiagram")) {
-    validateClassDiagram(lines.slice(1), errors)
-  } else if (firstLine.startsWith("erdiagram")) {
-    validateERDiagram(lines.slice(1), errors)
+    validateSequenceDiagram(lines, errors) // Pass all lines for context
   }
+  // Add other diagram-specific validations if needed
 
-  // Check for common error patterns
-  const codeText = code.toLowerCase()
-  if (codeText.includes("error:") || codeText.includes("parse error")) {
-    // More specific error keywords
-    errors.push("Contains 'error:' or 'parse error' keywords that may indicate parsing failures")
-  }
-  if (codeText.includes("identifying") && !codeText.includes("erdiagram")) {
-    // 'identifying' is valid in erDiagram
-    errors.push("Contains 'identifying' keyword outside of ER diagram context, may cause issues.")
+  if (code.match(/Error:/i) || code.match(/Syntax error/i) || code.match(/ParseException/i)) {
+    errors.push("Code contains explicit error messages from generation.")
   }
 
   return { isValid: errors.length === 0, errors }
 }
 
 function validateSequenceDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for arrows without senders more broadly
-    if (line.match(/^\s*(--?(?:>>?|x>?>?|\+>?>?)|->>?|-x|-+)\s*\w+/)) {
-      errors.push(`Invalid sequence diagram arrow: likely missing sender: "${line}"`)
-    }
+  // Skip the first line (sequenceDiagram declaration)
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    // Regex for valid message: ActorArrowActor: Message
+    // Allows for various arrow types and optional "as" alias for actors
+    const validMessageRegex =
+      /^\s*([\w\s"]+|[\w\s"]+\s+as\s+[\w\s"]+)\s*(--?>?>?|--?x>?>?|--?\+\+>?>?)\s*([\w\s"]+|[\w\s"]+\s+as\s+[\w\s"]+)\s*:\s*.+$/
+    const participantDeclarationRegex = /^\s*(participant|actor)\s+([\w\s"]+|[\w\s"]+\s+as\s+[\w\s"]+)\s*$/
+    const noteRegex = /^\s*Note\s+(right of|left of|over)\s+([\w\s"]+)\s*:\s*.+$/
+    const activateDeactivateRegex = /^\s*(activate|deactivate)\s+([\w\s"]+)\s*$/
+    const loopAltOptRegex = /^\s*(loop|alt|opt|par|critical|break|rect rgb$$\d+,\s*\d+,\s*\d+$$)\s*.*?$/
+    const endRegex = /^\s*end\s*$/
 
-    // Check for proper participant format
-    if (line.startsWith("participant ") && !line.match(/^participant\s+(?:".+?"|\w+)(?:\s+as\s+(?:".+?"|\w+))?$/i)) {
-      errors.push(`Invalid participant declaration: "${line}"`)
+    if (
+      !validMessageRegex.test(line) &&
+      !participantDeclarationRegex.test(line) &&
+      !noteRegex.test(line) &&
+      !activateDeactivateRegex.test(line) &&
+      !loopAltOptRegex.test(line) &&
+      !endRegex.test(line) &&
+      line.trim() !== "" // Ignore empty lines
+    ) {
+      errors.push(
+        `Invalid sequence diagram line: "${line.substring(0, 50)}${line.length > 50 ? "..." : ""}". Expected format like 'Sender->>Receiver: Message' or 'participant Name'.`,
+      )
     }
-    if (line.startsWith("actor ") && !line.match(/^actor\s+(?:".+?"|\w+)(?:\s+as\s+(?:".+?"|\w+))?$/i)) {
-      errors.push(`Invalid actor declaration: "${line}"`)
+    if (
+      line.includes(":") &&
+      !line.match(/:\s*.+$/) &&
+      !noteRegex.test(line) &&
+      !loopAltOptRegex.test(line) &&
+      !participantDeclarationRegex.test(line) &&
+      !line.includes("{")
+    ) {
+      // A colon exists but not followed by space and message text (common error)
+      // And it's not a note, loop, or participant alias with a colon
+      errors.push(
+        `Potentially malformed message on line: "${line.substring(0, 50)}...". Ensure colon is followed by message text.`,
+      )
     }
   }
 }
 
 function validateFlowchart(lines: string[], errors: string[]) {
+  // Basic flowchart validation (can be expanded)
   for (const line of lines) {
-    // Check for missing arrows in connections
-    // A line with text, not being a node definition, likely needs arrows
-    if (
-      !line.includes("-->") &&
-      !line.includes("->") &&
-      !line.match(/^\s*\w+\s*(\[.*?\]|$$.*?$$|{.*?}|$$>.*?$$|(\w+::\w+))/) && // Exclude node definitions
-      line.match(/\w.*\w/) // Contains some words
-    ) {
-      errors.push(`Possible missing arrow in flowchart connection: "${line}"`)
+    if (line.includes("->") && !line.includes("-->") && !line.includes("-- text -->")) {
+      // Potentially using single dash arrow which is less common / might be typo
+      // errors.push(`Consider using '-->' or '-- text -->' for flowchart connections: "${line}"`);
     }
   }
 }
 
 function validateClassDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for proper class syntax
-    if (line.includes("class ") && !line.match(/^class\s+(?:~|\w+|"[^"]+")(?:\s*<[^>]+>)?(?:\s*\{)?/)) {
-      errors.push(`Invalid class declaration: "${line}"`)
-    }
-  }
+  /* Basic validation */
 }
-
 function validateERDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for proper entity relationship syntax
-    if (
-      line.includes("||") ||
-      line.includes("}|") ||
-      line.includes("|{") ||
-      line.includes("o|") ||
-      line.includes("|o") ||
-      line.includes("o{") ||
-      line.includes("}o")
-    ) {
-      if (
-        !line.match(/^\s*\w+\s*([|}{o]+[-.]+?[|}{o]+)\s*\w+\s*:\s*".*?"\s*$/) &&
-        !line.match(/^\s*\w+\s*\{[\s\S]*?\}\s*$/)
-      ) {
-        // also allow entity block
-        errors.push(`Invalid ER relationship syntax: "${line}"`)
-      }
-    }
-  }
+  /* Basic validation */
 }
 
 export function sanitizeMermaidCode(code: string): string {
@@ -164,9 +145,7 @@ export function sanitizeMermaidCode(code: string): string {
   }
 
   let cleanedCode = code.trim()
-
-  cleanedCode = cleanedCode.replace(/^```(?:mermaid)?\n?/gm, "")
-  cleanedCode = cleanedCode.replace(/\n?```$/gm, "")
+  cleanedCode = cleanedCode.replace(/^```(?:mermaid)?\n?/gm, "").replace(/\n?```$/gm, "")
   cleanedCode = cleanedCode.trim()
 
   const lines = cleanedCode.split("\n")
@@ -179,6 +158,7 @@ export function sanitizeMermaidCode(code: string): string {
     "journey",
     "gantt",
     "statediagram",
+    "statediagram-v2",
     "erdiagram",
     "pie",
     "mindmap",
@@ -188,7 +168,7 @@ export function sanitizeMermaidCode(code: string): string {
     "c4component",
     "c4dynamic",
     "c4deployment",
-  ]
+  ].map((kw) => kw.toLowerCase())
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().toLowerCase()
@@ -199,161 +179,140 @@ export function sanitizeMermaidCode(code: string): string {
   }
 
   if (diagramStartIndex > 0) {
-    cleanedCode = lines.slice(diagramStartIndex).join("\n")
+    cleanedCode = lines.slice(diagramStartIndex).join("\n").trim()
   } else if (
     diagramStartIndex === -1 &&
     lines.length > 0 &&
     !diagramKeywords.some((kw) => lines[0].trim().toLowerCase().startsWith(kw))
   ) {
-    // If no keyword found and it's not the first line, it's likely missing.
-    // The validation will catch this. Forcing a type here can be problematic.
+    // If no keyword found and the first line doesn't start with one, it's likely missing.
+    // The validation will catch this. We avoid prepending a default here.
   }
 
   if (isOldFlowchartSyntax(cleanedCode)) {
     cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
   }
 
-  cleanedCode = cleanInvalidSyntax(cleanedCode)
+  cleanedCode = cleanGenericInvalidSyntax(cleanedCode)
 
-  const firstLineTrimmed = cleanedCode.split("\n")[0]?.trim().toLowerCase() || ""
+  const firstLineLower = cleanedCode.split("\n")[0]?.trim().toLowerCase() || ""
 
-  if (firstLineTrimmed.startsWith("sequencediagram")) {
+  if (firstLineLower.startsWith("sequencediagram")) {
     cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
-  } else if (firstLineTrimmed.startsWith("graph") || firstLineTrimmed.startsWith("flowchart")) {
+  } else if (firstLineLower.startsWith("graph") || firstLineLower.startsWith("flowchart")) {
     cleanedCode = fixFlowchartSyntax(cleanedCode)
-  } else if (firstLineTrimmed.startsWith("erdiagram")) {
+  } else if (firstLineLower.startsWith("erdiagram")) {
     cleanedCode = fixERDiagramSyntax(cleanedCode)
-  } else if (firstLineTrimmed.startsWith("classdiagram")) {
+  } else if (firstLineLower.startsWith("classdiagram")) {
     cleanedCode = fixClassDiagramSyntax(cleanedCode)
   }
 
-  cleanedCode = cleanedCode
+  return cleanedCode
     .split("\n")
-    .map((line) => line.trim()) // Trim again after specific fixes
-    .filter((line) => line.length > 0 || line === "") // Keep single empty lines for readability if intended
+    .map((line) => line.trim()) // Trim each line again after specific fixes
+    .filter((line) => line.length > 0 || line === "") // Keep intentional empty lines if any, but filter out lines that became empty due to trimming
     .join("\n")
-    // Remove excessive blank lines (more than 2 consecutive)
-    .replace(/\n{3,}/g, "\n\n")
-
-  return cleanedCode.trim() // Final trim
+    .replace(/\n{3,}/g, "\n\n") // Consolidate multiple blank lines
 }
 
-function cleanInvalidSyntax(code: string): string {
+function cleanGenericInvalidSyntax(code: string): string {
   let cleaned = code
-  cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
-  cleaned = cleaned.replace(/\bERROR[:\s]/gi, "Error_Node ") // Replace isolated ERROR keyword if followed by : or space
-  cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:\s*")/gi, "Identifying_Attr ") // Avoid 'identifying' if not part of ER label
-  cleaned = cleaned.replace(/\bBelow\b/gi, "Attribute_Below ")
+  // Remove lines that are just "ERROR" or "IDENTIFYING" or "Below" as these are often AI artifacts
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const upperLine = line.trim().toUpperCase()
+      return upperLine !== "ERROR" && upperLine !== "IDENTIFYING" && upperLine !== "BELOW"
+    })
+    .join("\n")
 
-  cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n") // Consolidate multiple blank lines
+  // Remove common error patterns like "ERROR -- ERROR_TYPE : ..."
+  cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
+
+  // Attempt to fix common malformed arrows or connections if they are obviously wrong
+  // Example: "User  API: Request" might become "User->>API: Request" if context suggests sequence
+  // This is tricky and needs to be conservative to avoid breaking valid syntax.
+  // For now, focusing on removing obvious AI error injections.
 
   return cleaned
 }
 
-function fixERDiagramSyntax(code: string): string {
+function fixSequenceDiagramSyntax(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
-  let inEntityBlock = false
+  const declaredParticipants = new Set<string>()
 
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    if (!fixedLine && !inEntityBlock) {
-      // Allow empty lines outside blocks
-      fixedLines.push(fixedLine)
-      continue
-    }
-    if (fixedLine.toLowerCase() === "erdiagram") {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    if (fixedLine.endsWith("{")) inEntityBlock = true
-    if (fixedLine.startsWith("}")) inEntityBlock = false
-
-    // Relationship: ENTITY |relationship|--|cardinality| ENTITY : "label"
-    const relMatch = fixedLine.match(/^(\w+)\s*([|o}{]+[-.]+?[|o}{]+)\s*(\w+)\s*:\s*(.+)$/)
-    if (relMatch) {
-      let [, entity1, relation, entity2, label] = relMatch
-      label = label.trim()
-      if (!label.startsWith('"') || !label.endsWith('"')) {
-        label = `"${label.replace(/"/g, "''")}"` // Escape inner quotes for label
-      }
-      fixedLine = `${entity1} ${relation} ${entity2} : ${label}`
-    }
-    // Entity definition: ENTITY { type name "comment" }
-    else if (fixedLine.match(/^\w+\s*\{/)) {
-      // Start of an entity block
-      // Handled by block logic or pass as is
-    } else if (inEntityBlock && !fixedLine.startsWith("}")) {
-      // Inside an entity block
-      const attrMatch = fixedLine.match(/^(\w+)\s+(\w+)(\s*(?:PK|FK))?(\s*".*?")?$/)
-      if (attrMatch) {
-        const [, type, name, keyConstraint, comment] = attrMatch
-        fixedLine = `  ${type} ${name}`
-        if (keyConstraint) fixedLine += keyConstraint.trim()
-        if (comment) fixedLine += ` ${comment.trim()}`
-      }
-    }
-
-    fixedLines.push(fixedLine)
-  }
-
-  return fixedLines.join("\n")
-}
-
-function fixClassDiagramSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-  let inClassBlock = false
-
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    if (!fixedLine && !inClassBlock) {
-      fixedLines.push(fixedLine)
-      continue
-    }
-    if (fixedLine.toLowerCase() === "classdiagram") {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    if (fixedLine.includes("{")) inClassBlock = true
-    if (fixedLine.includes("}")) inClassBlock = false
-
-    // Class definition: class Animal { +String name }
-    const classDefMatch = fixedLine.match(/^class\s+([\w~]+(?:\s*<[\w,\s]+>)?)/)
-    if (classDefMatch) {
-      // fixedLine is likely okay or needs more complex parsing for generics/annotations
-    }
-    // Member / method
-    else if (inClassBlock && !fixedLine.startsWith("}")) {
-      // Example: +String name
-      // Example: +getName(): String
-      const memberMatch = fixedLine.match(
-        /^([#|+~-])?\s*([\w<>,\s[\]]+)\s*($$[\w\s,:]*$$)?(\s*:\s*[\w<>[\]]+)?(\s*[*$])?$/,
+  // First pass: identify declared participants
+  lines.forEach((line) => {
+    const participantMatch = line.trim().match(/^(participant|actor)\s+([\w\s"]+|[\w\s"]+\s+as\s+[\w\s"]+)/)
+    if (participantMatch) {
+      declaredParticipants.add(
+        participantMatch[2].includes(" as ") ? participantMatch[2].split(" as ")[0].trim() : participantMatch[2].trim(),
       )
-      if (memberMatch) {
-        // This regex is complex; simple pass-through might be safer unless specific errors occur
+    }
+  })
+
+  for (const line of lines) {
+    let currentLine = line.trim()
+
+    if (currentLine.toLowerCase() === "sequencediagram" || currentLine === "") {
+      fixedLines.push(currentLine)
+      continue
+    }
+
+    // Regex for participant declaration
+    const participantDeclarationRegex = /^(participant|actor)\s+([\w\s"]+|[\w\s"]+\s+as\s+[\w\s"]+)/
+    if (participantDeclarationRegex.test(currentLine)) {
+      fixedLines.push(currentLine)
+      const match = currentLine.match(participantDeclarationRegex)
+      if (match)
+        declaredParticipants.add(match[2].includes(" as ") ? match[2].split(" as ")[0].trim() : match[2].trim())
+      continue
+    }
+
+    // Attempt to fix lines like "Sender Receiver: Message" or "Sender:Receiver: Message"
+    // This is a common AI mistake.
+    const malformedMessageMatch = currentLine.match(/^([\w\s"]+)\s+([\w\s"]+)\s*:\s*(.+)$/)
+    if (
+      malformedMessageMatch &&
+      !currentLine.includes("->") &&
+      !currentLine.includes("Note ") &&
+      !currentLine.includes("loop") &&
+      !currentLine.includes("alt") &&
+      !currentLine.includes("opt")
+    ) {
+      const [, sender, receiver, message] = malformedMessageMatch
+      if (declaredParticipants.has(sender.trim()) && declaredParticipants.has(receiver.trim())) {
+        currentLine = `${sender.trim()}->>${receiver.trim()}: ${message.trim()}`
       }
     }
-    // Relationship: Class1 --|> Class2 : Inheritance
-    const relMatch = fixedLine.match(
-      /^([\w~]+(?:\s*<[\w,\s]+>)?)\s*(<\|--|--\|>|\*--|--\*|o--|--o|-->|<--|--)\s*([\w~]+(?:\s*<[\w,\s]+>)?)(?:\s*:\s*(.+))?$/,
+
+    // Attempt to fix lines like "Sender: ->> Receiver: Message"
+    const colonInSenderMatch = currentLine.match(
+      /^([\w\s"]+)\s*:\s*(--?>?>?|--?x>?>?|--?\+\+>?>?)\s*([\w\s"]+)\s*:\s*(.+)$/,
     )
-    if (relMatch) {
-      let [, classA, arrow, classB, label] = relMatch
-      fixedLine = `${classA} ${arrow} ${classB}`
-      if (label && label.trim()) {
-        label = label.trim()
-        if (!label.startsWith('"') || !label.endsWith('"')) {
-          label = `"${label.replace(/"/g, "''")}"`
-        }
-        fixedLine += ` : ${label}`
+    if (colonInSenderMatch) {
+      const [, sender, arrow, receiver, message] = colonInSenderMatch
+      currentLine = `${sender.trim()}${arrow}${receiver.trim()}: ${message.trim()}`
+    }
+
+    // Ensure a colon exists before message text if an arrow is present
+    const arrowPresentMatch = currentLine.match(
+      /^([\w\s"]+\s*(?:as\s+[\w\s"]+)?\s*(?:--?>?>?|--?x>?>?|--?\+\+>?>?)\s*[\w\s"]+\s*(?:as\s+[\w\s"]+)?)(.*)$/,
+    )
+    if (arrowPresentMatch) {
+      let [, interaction, messagePart] = arrowPresentMatch
+      messagePart = messagePart.trim()
+      if (messagePart.length > 0 && !messagePart.startsWith(":")) {
+        currentLine = `${interaction}: ${messagePart}`
+      } else if (messagePart.length === 0 && interaction.split(/(--?>?>?|--?x>?>?|--?\+\+>?>?)/)[2].trim() !== "") {
+        // Arrow is present, receiver is present, but no message part and no colon
+        // This is likely an error, but hard to fix without context.
+        // For now, we'll let validation catch it if it's truly invalid.
       }
     }
-    fixedLines.push(fixedLine)
+
+    fixedLines.push(currentLine)
   }
   return fixedLines.join("\n")
 }
@@ -372,11 +331,14 @@ function convertOldFlowchartToMermaid(code: string): string {
 
   for (const line of lines) {
     if (line.includes("=>")) {
-      const [idPart, defPart] = line.split("=>", 2)
+      const [idPart, defPart] = line.split("=>")
       const id = idPart.trim()
-      const [type, ...labelParts] = defPart.trim().split(":")
-      const label = labelParts.join(":").trim() // Handle colons in labels
-      nodes[id] = { type: type.trim(), label: label || id } // Default label to id if empty
+      if (defPart) {
+        const [typePart, ...labelParts] = defPart.split(":")
+        const type = typePart.trim()
+        const label = labelParts.join(":").trim()
+        nodes[id] = { type, label }
+      }
     }
   }
 
@@ -384,14 +346,15 @@ function convertOldFlowchartToMermaid(code: string): string {
     if (line.includes("->") && !line.includes("=>")) {
       const parts = line.split("->")
       for (let i = 0; i < parts.length - 1; i++) {
-        const fromPart = parts[i].trim()
-        const toPart = parts[i + 1].trim()
+        const fromFull = parts[i].trim()
+        const to = parts[i + 1].trim()
 
-        const conditionMatch = fromPart.match(/^(\w+)\s*$$(yes|no)$$$/i)
+        const conditionMatch = fromFull.match(/^(\w+)\s*$$(.+)$$$/)
         if (conditionMatch) {
-          connections.push(`${conditionMatch[1]} -- ${conditionMatch[2]} --> ${toPart}`)
+          const [, nodeId, conditionText] = conditionMatch
+          connections.push(`${nodeId} -- ${conditionText} --> ${to}`)
         } else {
-          connections.push(`${fromPart} --> ${toPart}`)
+          connections.push(`${fromFull} --> ${to}`)
         }
       }
     }
@@ -399,170 +362,44 @@ function convertOldFlowchartToMermaid(code: string): string {
 
   let mermaidCode = "graph TD\n"
   for (const [id, node] of Object.entries(nodes)) {
-    let nodeShape = "[]" // Default operation
+    let nodeShape = `[${node.label || id}]` // Default rectangle
     if (node.type === "start" || node.type === "end")
-      nodeShape = "(())" // Rounded
+      nodeShape = `((${node.label || id}))` // Circle
     else if (node.type === "condition")
-      nodeShape = "{}" // Diamond
-    // inputoutput: >]
-    else if (node.type === "input" || node.type === "io" || node.type === "inputoutput") nodeShape = "[>]"
+      nodeShape = `{${node.label || id}}` // Diamond
+    else if (node.type === "inputoutput") nodeShape = `[/${node.label || id}/]` // Parallelogram
 
-    mermaidCode += `    ${id}${nodeShape[0]}"${node.label.replace(/"/g, "#quot;")}"${nodeShape.substring(1)}\n`
+    mermaidCode += `    ${id}${nodeShape}\n`
   }
+
   for (const conn of connections) {
     mermaidCode += `    ${conn}\n`
   }
   return mermaidCode
 }
 
-function fixSequenceDiagramSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-  let lastKnownSender = ""
-  const declaredParticipants = new Set<string>()
-
-  // First line must be sequenceDiagram
-  if (lines.length === 0 || lines[0].trim().toLowerCase() !== "sequencediagram") {
-    fixedLines.push("sequenceDiagram")
-  } else {
-    fixedLines.push(lines[0].trim())
-  }
-
-  // Collect explicit participant/actor declarations first
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim()
-    const participantMatch = line.match(/^(participant|actor)\s+(.+)/i)
-    if (participantMatch) {
-      let name = participantMatch[2].trim()
-      if (/\s/.test(name) && !/^".*"$/.test(name) && !/^'.*'$/.test(name)) {
-        name = `"${name}"` // Quote if contains space and not already quoted
-      }
-      declaredParticipants.add(name)
-      // Don't add to fixedLines yet, will be added in order later
-    }
-  }
-
-  // Add all declared participants at the top
-  declaredParticipants.forEach((p) => fixedLines.push(`participant ${p}`))
-
-  for (let i = 1; i < lines.length; i++) {
-    let fixedLine = lines[i].trim()
-    if (!fixedLine) continue
-
-    // Skip already processed participant/actor declarations
-    if (fixedLine.match(/^(participant|actor)\s+(.+)/i)) {
-      continue
-    }
-
-    // Arrow syntax: (ActorA|ActorB) ArrowType (ActorC|ActorD): MessageText
-    // Arrow Types: ->, ->>, -->, -->>, -x, --x, -+, --+
-    const arrowRegex = /^(.*?)\s*(--?(?:>>?|x>?>?|\+>?>?)|->>?|-x|-+)\s*(.*?)(?:\s*:\s*(.*))?$/
-    let match = fixedLine.match(arrowRegex)
-
-    // Handle lines that might be missing a sender (e.g. "->> Server: Request")
-    if (!match && fixedLine.match(/^\s*(--?(?:>>?|x>?>?|\+>?>?)|->>?|-x|-+)/)) {
-      if (lastKnownSender) {
-        fixedLine = `${lastKnownSender} ${fixedLine}`
-        match = fixedLine.match(arrowRegex) // Re-match
-      } else if (declaredParticipants.size > 0) {
-        // Use first declared participant if no last sender
-        const defaultSender = Array.from(declaredParticipants)[0]
-        fixedLine = `${defaultSender} ${fixedLine}`
-        match = fixedLine.match(arrowRegex)
-      } else {
-        // Fallback if no participants declared and no last sender
-        fixedLine = `"Actor1" ${fixedLine}` // Add a default actor
-        if (!fixedLines.includes(`participant "Actor1"`)) fixedLines.splice(1, 0, `participant "Actor1"`) // Declare it
-        match = fixedLine.match(arrowRegex)
-      }
-    }
-
-    if (match) {
-      let [, sender, arrow, receiver, messageText = ""] = match
-      sender = sender.trim()
-      receiver = receiver.trim()
-      messageText = messageText.trim()
-
-      // Correct malformed arrows (e.g. single dash to solid arrow)
-      if (arrow === "-") arrow = "->"
-      if (arrow === "--") arrow = "-->"
-
-      if (/\s/.test(sender) && !/^".*"$/.test(sender)) sender = `"${sender}"`
-      if (/\s/.test(receiver) && !/^".*"$/.test(receiver)) receiver = `"${receiver}"`
-
-      // Add sender/receiver to declaredParticipants if not already there (will be added at top)
-      if (!declaredParticipants.has(sender)) {
-        fixedLines.splice(1, 0, `participant ${sender}`)
-        declaredParticipants.add(sender)
-      }
-      if (!declaredParticipants.has(receiver)) {
-        fixedLines.splice(1, 0, `participant ${receiver}`)
-        declaredParticipants.add(receiver)
-      }
-
-      lastKnownSender = sender // Update last known sender
-
-      // Sanitize message text: remove patterns that look like new arrows
-      messageText = messageText.replace(
-        /\b\w+\s*(--?(?:>>?|x>?>?|\+>?>?)|->>?|-x|-+)\s*\w+(?:\s*:.*)?/g,
-        "(interaction described)",
-      )
-      messageText = messageText.replace(/^:/, "").replace(/:$/, "").trim() // Remove leading/trailing colons from message
-
-      fixedLine = `${sender} ${arrow} ${receiver}${messageText ? `: ${messageText}` : ""}`
-    }
-    // For other constructs (note, loop, activate, etc.), pass them mostly as-is for now.
-    // Example: note right of User: This is a note.
-    // Example: activate User
-    // Example: loop Every minute
-    // These might need their own sanitizers if they become problematic.
-
-    // Only add non-participant lines here, as participants are added at the top
-    if (!fixedLine.match(/^(participant|actor)\s+(.+)/i)) {
-      fixedLines.push(fixedLine)
-    }
-  }
-
-  // Remove duplicate lines that might have occurred from adding participants and then processing lines
-  const uniqueLinesResult = Array.from(new Set(fixedLines))
-  return uniqueLinesResult.join("\n")
+function fixFlowchartSyntax(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => {
+      // Ensure space around arrows
+      return line.replace(/(\S)-->(S)/g, "$1 --> $2").replace(/(\S)---(S)/g, "$1 --- $2")
+    })
+    .join("\n")
 }
 
-function fixFlowchartSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    if (!fixedLine || fixedLine.toLowerCase().startsWith("graph") || fixedLine.toLowerCase().startsWith("flowchart")) {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    // Ensure connections have proper arrow syntax
-    // A simple heuristic: if a line has words/ids but no typical node definition brackets and no arrows, try to add arrows.
-    if (
-      !fixedLine.includes("-->") &&
-      !fixedLine.includes("->") &&
-      !fixedLine.match(/(\[.*?\]|$$.*?$$|{.*?}|$$>.*?$$|(\w+::\w+))/) && // Not a node definition
-      fixedLine.match(/\w/) // Contains word characters
-    ) {
-      const parts = fixedLine.split(/\s+/).filter((p) => p.length > 0) // Split by space and filter empty
-      if (parts.length >= 2) {
-        fixedLine = parts.join(" --> ")
-      }
-    }
-    fixedLines.push(fixedLine)
-  }
-
-  return fixedLines.join("\n")
+function fixERDiagramSyntax(code: string): string {
+  /* Basic placeholder */ return code
+}
+function fixClassDiagramSyntax(code: string): string {
+  /* Basic placeholder */ return code
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
   const systemMessage: Message = {
     role: "system",
     content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+    CRITICAL: Your response MUST start *directly* with a valid Mermaid diagram type keyword (e.g., graph TD, sequenceDiagram). NO other text before it.
     
 Available diagram types:
 - Flowchart: graph TD or graph LR
@@ -570,7 +407,6 @@ Available diagram types:
 - Class diagram: classDiagram
 - User journey: journey
 - Gantt chart: gantt
-- C4 diagram: C4Context, C4Container, C4Component
 
 Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
   }
@@ -585,14 +421,14 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
       model,
       messages: [systemMessage, ...messages],
       stream: true,
-      temperature: 0.7,
-      max_tokens: 1000,
+      temperature: 0.7, // Slightly higher for direct stream if needed
+      max_tokens: 1500,
     }),
   })
 
   if (!response.ok) {
-    const errorBody = await response.text() // Get error body for more details
-    console.error("OpenAI API error:", response.status, errorBody)
+    const errorBody = await response.text()
+    console.error("OpenAI API direct stream error:", response.status, errorBody)
     throw new Error(`OpenAI API error: ${response.status} - ${errorBody}`)
   }
 
@@ -603,8 +439,7 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
     async start(controller) {
       const reader = response.body?.getReader()
       if (!reader) {
-        controller.error(new Error("Failed to get ReadableStream reader.")) // More descriptive error
-        // controller.close(); // Not needed here as error is thrown
+        controller.error(new Error("Failed to get ReadableStream reader."))
         return
       }
 
@@ -623,7 +458,6 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
                 controller.close()
                 return
               }
-
               try {
                 const parsed = JSON.parse(data)
                 const content = parsed.choices?.[0]?.delta?.content
@@ -631,17 +465,17 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
                   controller.enqueue(encoder.encode(content))
                 }
               } catch (e) {
-                console.warn("Skipping invalid JSON in OpenAI stream chunk:", e, "Data:", data) // Log problematic data
+                /* Skip invalid JSON */
               }
             }
           }
         }
       } catch (error) {
-        console.error("Stream processing error:", error) // Log the error
+        console.error("OpenAI stream processing error:", error)
         controller.error(error)
       } finally {
         reader.releaseLock()
-        // controller.close(); // Already closed if [DONE] or error
+        controller.close()
       }
     },
   })
