@@ -1,30 +1,24 @@
-# Lets start
+# Flowchart AI
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+Draw flowchart, sequence diagram, class diagram, user journey, gantt, C4C diagram with nature language.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/tse-5461156a/v0-lets-start)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/LW1b9ngqx3z)
 
-## Overview
+## Getting Started
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+First, run the development server:
 
-## Deployment
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+```
 
-Your project is live at:
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-**[https://vercel.com/tse-5461156a/v0-lets-start](https://vercel.com/tse-5461156a/v0-lets-start)**
+## Credit
 
-## Build your app
-
-Continue building your app on:
-
-**[https://v0.dev/chat/projects/LW1b9ngqx3z](https://v0.dev/chat/projects/LW1b9ngqx3z)**
-
-## How It Works
-
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+* [Next.js](https://nextjs.org/)
+* [UI](https://ui.shadcn.com/) by shadcn
+* [Mermaid.js](https://mermaid.js.org/)
