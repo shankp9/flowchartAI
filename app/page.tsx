@@ -555,7 +555,7 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
             onClick={() => setDiagramCollapsed(!diagramCollapsed)}
             className="h-8 w-8 p-0"
           >
-            {diagramCollapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+            {diagramCollapsed ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
           </Button>
           {!diagramCollapsed && (
             <div className="flex items-center gap-2">
