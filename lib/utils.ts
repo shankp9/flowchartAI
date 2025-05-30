@@ -155,16 +155,7 @@ export function sanitizeMermaidCode(code: string): string {
       line.startsWith("gantt") ||
       line.startsWith("statediagram") ||
       line.startsWith("erdiagram") ||
-      line.startsWith("pie") ||
-      line.startsWith("gitgraph") ||
-      line.startsWith("mindmap") ||
-      line.startsWith("timeline") ||
-      line.startsWith("sankey") ||
-      line.startsWith("requirement") ||
-      line.startsWith("c4context") ||
-      line.startsWith("c4container") ||
-      line.startsWith("c4component") ||
-      line.startsWith("c4dynamic")
+      line.startsWith("pie")
     ) {
       diagramStartIndex = i
       break
@@ -175,18 +166,8 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = lines.slice(diagramStartIndex).join("\n")
   }
 
-  // Check if this is old flowchart syntax and convert it
-  if (isOldFlowchartSyntax(cleanedCode)) {
-    try {
-      cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
-    } catch (e) {
-      console.warn("Failed to convert old syntax:", e)
-      return createFallbackDiagram(code, "Failed to convert old syntax")
-    }
-  }
-
-  // Enhanced syntax cleaning and validation
-  cleanedCode = cleanInvalidSyntax(cleanedCode)
+  // CRITICAL: Fix spacing and formatting issues
+  cleanedCode = fixMermaidFormatting(cleanedCode)
 
   // Apply diagram-specific fixes
   try {
@@ -204,201 +185,170 @@ export function sanitizeMermaidCode(code: string): string {
     return createFallbackDiagram(code, "Failed to apply diagram-specific fixes")
   }
 
-  // CRITICAL: Ensure proper line formatting
-  cleanedCode = ensureProperLineFormatting(cleanedCode)
-
-  // Remove empty lines and normalize whitespace while preserving structure
-  cleanedCode = cleanedCode
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join("\n")
-
-  // Final validation - if still invalid, return a simple fallback
-  if (!cleanedCode || cleanedCode.length < 5 || !isValidMermaidStart(cleanedCode)) {
-    return createFallbackDiagram(code, "Invalid Mermaid start")
-  }
-
-  // Additional safety check for common error patterns
-  if (containsErrorPatterns(cleanedCode)) {
-    return createFallbackDiagram(code, "Contains error patterns")
-  }
-
-  // Final syntax validation
-  if (!validateFinalSyntax(cleanedCode)) {
-    return createFallbackDiagram(code, "Final syntax validation failed")
+  // Final validation and cleanup
+  if (!cleanedCode || cleanedCode.length < 5) {
+    return createFallbackDiagram(code, "Invalid code length")
   }
 
   return cleanedCode
 }
 
-// New function to ensure proper line formatting
-function ensureProperLineFormatting(code: string): string {
+// New function to fix critical formatting issues
+function fixMermaidFormatting(code: string): string {
   let formatted = code
 
-  // Fix common line break issues
-  formatted = formatted.replace(/([a-zA-Z0-9\]})]) +([a-zA-Z0-9[{(])/g, "$1\n    $2")
+  // Fix missing spaces after diagram type declarations
+  formatted = formatted.replace(
+    /^(graph|flowchart|sequenceDiagram|classDiagram|journey|gantt|stateDiagram|erDiagram|pie)([A-Z])/gm,
+    "$1 $2",
+  )
 
-  // Ensure arrows are on the same line as their nodes
-  formatted = formatted.replace(/\n\s*-->/g, " -->")
-  formatted = formatted.replace(/\n\s*->/g, " ->")
-  formatted = formatted.replace(/\n\s*-->>/g, " -->>")
-  formatted = formatted.replace(/\n\s*->>/g, " ->>")
+  // Fix missing spaces in class diagrams
+  formatted = formatted.replace(/classDiagram(\w)/g, "classDiagram\n    $1")
+  formatted = formatted.replace(/class(\w)/g, "class $1")
 
-  // Fix sequence diagram arrows
-  formatted = formatted.replace(/\n\s*--\+\+/g, " --++")
-  formatted = formatted.replace(/\n\s*-\+\+/g, " -++")
+  // Fix missing spaces in sequence diagrams
+  formatted = formatted.replace(/sequenceDiagram(\w)/g, "sequenceDiagram\n    $1")
+  formatted = formatted.replace(/participant(\w)/g, "participant $1")
 
-  // Ensure proper spacing around arrows
+  // Fix missing spaces in flowcharts
+  formatted = formatted.replace(/(graph|flowchart)\s*(TD|LR|TB|RL|BT)(\w)/g, "$1 $2\n    $3")
+
+  // Fix missing line breaks after diagram declarations
+  formatted = formatted.replace(
+    /^(graph\s+(?:TD|LR|TB|RL|BT)|flowchart\s+(?:TD|LR|TB|RL|BT)|sequenceDiagram|classDiagram|journey|gantt|stateDiagram|erDiagram|pie)([^\n])/gm,
+    "$1\n    $2",
+  )
+
+  // Fix concatenated words in class definitions
+  formatted = formatted.replace(/\{([+\-#~])(\w)/g, "{\n        $1$2")
+  formatted = formatted.replace(/(\w)\}/g, "$1\n    }")
+
+  // Fix missing spaces around arrows
   formatted = formatted.replace(/([a-zA-Z0-9\]})])-->/g, "$1 -->")
   formatted = formatted.replace(/-->([a-zA-Z0-9[{(])/g, "--> $1")
   formatted = formatted.replace(/([a-zA-Z0-9\]})])->/g, "$1 ->")
   formatted = formatted.replace(/->([a-zA-Z0-9[{(])/g, "-> $1")
 
-  // Fix node definitions that might be split across lines
-  formatted = formatted.replace(/\[([^\]]*)\n([^\]]*)\]/g, "[$1 $2]")
-  formatted = formatted.replace(/\{([^}]*)\n([^}]*)\}/g, "{$1 $2}")
-  formatted = formatted.replace(/$$([^)]*)\n([^)]*)$$/g, "($1 $2)")
+  // Fix sequence diagram arrows
+  formatted = formatted.replace(/([a-zA-Z0-9])->>([a-zA-Z0-9])/g, "$1->>$2")
+  formatted = formatted.replace(/([a-zA-Z0-9])-->>([a-zA-Z0-9])/g, "$1-->>$2")
 
-  return formatted
-}
+  // Ensure proper indentation
+  const lines = formatted.split("\n")
+  const formattedLines: string[] = []
+  let inDiagramBody = false
 
-// New function for final syntax validation
-function validateFinalSyntax(code: string): boolean {
-  const lines = code
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
 
-  if (lines.length === 0) return false
+    if (!line) {
+      continue // Skip empty lines
+    }
 
-  const firstLine = lines[0].toLowerCase()
+    // Check if this is a diagram declaration
+    const isDiagramDeclaration =
+      /^(graph\s+(?:TD|LR|TB|RL|BT)|flowchart\s+(?:TD|LR|TB|RL|BT)|sequenceDiagram|classDiagram|journey|gantt|stateDiagram|erDiagram|pie)$/i.test(
+        line,
+      )
 
-  // Check for valid diagram start
-  const validStarts = [
-    "graph",
-    "flowchart",
-    "sequencediagram",
-    "classdiagram",
-    "journey",
-    "gantt",
-    "statediagram",
-    "erdiagram",
-    "pie",
-  ]
-
-  const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
-  if (!hasValidStart) return false
-
-  // Check for problematic patterns that cause parse errors
-  for (const line of lines) {
-    // Check for incomplete node definitions
-    if (line.match(/\[[^\]]*$/)) return false // Unclosed bracket
-    if (line.match(/\{[^}]*$/)) return false // Unclosed brace
-    if (line.match(/\([^)]*$/)) return false // Unclosed parenthesis
-
-    // Check for arrows without proper spacing
-    if (line.match(/[a-zA-Z0-9]-->[a-zA-Z0-9]/)) return false
-    if (line.match(/[a-zA-Z0-9]->[a-zA-Z0-9]/)) return false
-
-    // Check for invalid characters in node names
-    if (line.match(/[a-zA-Z0-9]+[^a-zA-Z0-9\s[{(\->|:;.,"'`~!@#$%^&*+=/\\?\n]/)) return false
+    if (isDiagramDeclaration) {
+      formattedLines.push(line)
+      inDiagramBody = true
+    } else if (inDiagramBody) {
+      // Add proper indentation for diagram content
+      if (!line.startsWith("    ")) {
+        formattedLines.push("    " + line)
+      } else {
+        formattedLines.push(line)
+      }
+    } else {
+      formattedLines.push(line)
+    }
   }
 
-  return true
-}
-
-function fixERDiagramSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    // Skip empty lines and diagram declaration
-    if (!fixedLine || fixedLine === "erDiagram") {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    // Fix entity definitions
-    if (fixedLine.includes("{") && !fixedLine.includes("}")) {
-      // Multi-line entity definition
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    // Fix relationship syntax
-    if (fixedLine.includes("||") || fixedLine.includes("}|") || fixedLine.includes("|{")) {
-      // Ensure proper relationship format: ENTITY ||--|| ENTITY : LABEL
-      const relationshipMatch = fixedLine.match(/(\w+)\s*([|}{]+[-|]+[|}{]+)\s*(\w+)\s*:\s*(.+)/)
-      if (relationshipMatch) {
-        const [, entity1, relationship, entity2, label] = relationshipMatch
-        fixedLine = `${entity1} ${relationship} ${entity2} : ${label}`
-      }
-    }
-
-    // Fix entity attribute syntax
-    if (fixedLine.includes("{") && fixedLine.includes("}")) {
-      // Single-line entity definition
-      const entityMatch = fixedLine.match(/(\w+)\s*\{([^}]+)\}/)
-      if (entityMatch) {
-        const [, entityName, attributes] = entityMatch
-        const cleanAttributes = attributes
-          .split(/[,\n]/)
-          .map((attr) => attr.trim())
-          .filter((attr) => attr.length > 0)
-          .map((attr) => {
-            // Clean attribute format
-            return attr.replace(/\s+/g, " ").replace(/[^\w\s()]/g, "")
-          })
-          .join("\n        ")
-
-        fixedLine = `${entityName} {\n        ${cleanAttributes}\n    }`
-      }
-    }
-
-    fixedLines.push(fixedLine)
-  }
-
-  return fixedLines.join("\n")
+  return formattedLines.join("\n")
 }
 
 function fixClassDiagramSyntax(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
 
-  for (const line of lines) {
-    let fixedLine = line.trim()
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim()
 
-    // Skip empty lines and diagram declaration
-    if (!fixedLine || fixedLine === "classDiagram") {
-      fixedLines.push(fixedLine)
+    // Skip empty lines
+    if (!line) {
       continue
     }
 
-    // Fix class definitions
-    if (fixedLine.includes("class ")) {
-      // Ensure proper class syntax
-      fixedLine = fixedLine.replace(/class\s+(\w+)\s*\{/, "class $1 {")
+    // Handle diagram declaration
+    if (line.toLowerCase() === "classdiagram" || line.toLowerCase().startsWith("classdiagram")) {
+      fixedLines.push("classDiagram")
+      continue
     }
 
-    // Fix method and property syntax
-    if (fixedLine.includes("(") && fixedLine.includes(")")) {
-      // Method definition
-      fixedLine = fixedLine.replace(/\s+/g, " ")
-    }
+    // Fix class definitions with proper spacing and formatting
+    if (line.includes("class ") || line.match(/^class\w/)) {
+      // Ensure proper class syntax: class ClassName {
+      line = line.replace(/^class\s*(\w+)\s*\{?/, "class $1 {")
 
-    // Fix inheritance syntax
-    if (fixedLine.includes("<|--") || fixedLine.includes("--|>")) {
-      const inheritanceMatch = fixedLine.match(/(\w+)\s*(<\|--|--\|>)\s*(\w+)/)
-      if (inheritanceMatch) {
-        const [, class1, arrow, class2] = inheritanceMatch
-        fixedLine = `${class1} ${arrow} ${class2}`
+      // If the class definition continues on the same line, split it
+      if (line.includes("{") && line.length > line.indexOf("{") + 1) {
+        const classDeclaration = line.substring(0, line.indexOf("{") + 1)
+        const classContent = line.substring(line.indexOf("{") + 1)
+
+        fixedLines.push("    " + classDeclaration)
+
+        // Process class content
+        if (classContent.trim() && !classContent.trim().startsWith("}")) {
+          const methods = classContent.split(/[,\n]/).filter((m) => m.trim())
+          methods.forEach((method) => {
+            const cleanMethod = method.trim().replace(/\}$/, "")
+            if (cleanMethod) {
+              fixedLines.push("        " + cleanMethod)
+            }
+          })
+          fixedLines.push("    }")
+        } else if (classContent.trim() === "}") {
+          fixedLines.push("    }")
+        }
+      } else {
+        fixedLines.push("    " + line)
       }
+      continue
     }
 
-    fixedLines.push(fixedLine)
+    // Handle class methods and properties
+    if (line.match(/^[+\-#~]/)) {
+      fixedLines.push("        " + line)
+      continue
+    }
+
+    // Handle closing braces
+    if (line === "}") {
+      fixedLines.push("    }")
+      continue
+    }
+
+    // Handle relationships
+    if (
+      line.includes("-->") ||
+      line.includes("<|--") ||
+      line.includes("--|>") ||
+      line.includes("..>") ||
+      line.includes("<..")
+    ) {
+      fixedLines.push("    " + line)
+      continue
+    }
+
+    // Handle other content with proper indentation
+    if (line && !line.startsWith("    ")) {
+      fixedLines.push("    " + line)
+    } else {
+      fixedLines.push(line)
+    }
   }
 
   return fixedLines.join("\n")
@@ -573,7 +523,7 @@ function fixFlowchartSyntax(code: string): string {
     } else if (fixedLine.match(/^\s*[a-zA-Z0-9]+\s*\{.*\}\s*$/)) {
       // Decision node
       fixedLines.push(`    ${fixedLine}`)
-    } else if (fixedLine.match(/^\s*[a-zA-Z0-9]+\s*$$.*$$\s*$/)) {
+    } else if (fixedLine.match(/^\s*[a-zA-Z0-9]+\s*$$$.*$$$\s*$/)) {
       // Round node
       fixedLines.push(`    ${fixedLine}`)
     } else if (fixedLine.match(/^\s*style\s+/)) {
@@ -602,6 +552,11 @@ function fixFlowchartSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
+}
+
+function fixERDiagramSyntax(code: string): string {
+  // Placeholder for ER diagram specific fixes
+  return code
 }
 
 export function createFallbackDiagram(originalCode: string, errorMessage: string): string {
