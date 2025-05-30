@@ -90,6 +90,7 @@ export function Mermaid({
   const [sanitizedCode, setSanitizedCode] = useState("")
   const [wasFixed, setWasFixed] = useState(false)
   const [wasConverted, setWasConverted] = useState(false)
+  const [showGrid, setShowGrid] = useState(false) // Declare showGrid variable
 
   // Enhanced zoom and pan state with better control
   const [zoom, setZoom] = useState(1)
@@ -97,7 +98,6 @@ export function Mermaid({
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [showControls, setShowControls] = useState(isFullscreen)
-  const [showGrid, setShowGrid] = useState(false)
   const [autoFit, setAutoFit] = useState(true)
 
   // Enhanced interaction state
@@ -564,7 +564,6 @@ export function Mermaid({
               try {
                 container.removeChild(container.firstChild)
               } catch (e) {
-                // If removeChild fails, try alternative cleanup
                 container.innerHTML = ""
                 break
               }
@@ -974,15 +973,11 @@ export function Mermaid({
               <RotateCcw className="h-3 w-3" />
             </button>
             <button
-              className={`w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors ${
-                showGrid ? "bg-blue-50 border-blue-200 text-blue-700" : ""
-              }`}
-              onClick={() => setShowGrid(!showGrid)}
-              title="Toggle Grid"
+              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
+              onClick={handleFullscreen}
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
             </button>
           </div>
 
@@ -1140,16 +1135,6 @@ export function Mermaid({
               <Code className="h-3 w-3" />
             )}
             <span>Code</span>
-          </button>
-
-          {/* Fullscreen Toggle */}
-          <button
-            className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-            onClick={handleFullscreen}
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-            <span>{isFullscreen ? "Exit" : "Full"}</span>
           </button>
 
           {/* Chat visibility toggle */}
