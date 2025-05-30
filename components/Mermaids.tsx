@@ -494,10 +494,25 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
         // Clear previous content safely
         try {
-          while (container.firstChild) {
-            container.removeChild(container.firstChild)
+          // Use a more robust clearing method
+          const children = Array.from(container.children)
+          children.forEach((child) => {
+            try {
+              if (container.contains(child)) {
+                container.removeChild(child)
+              }
+            } catch (e) {
+              // If removeChild fails, try alternative methods
+              console.warn("Failed to remove child node:", e)
+            }
+          })
+
+          // Fallback to innerHTML if needed
+          if (container.children.length > 0) {
+            container.innerHTML = ""
           }
         } catch (e) {
+          console.warn("Error clearing container:", e)
           container.innerHTML = ""
         }
 
@@ -791,11 +806,19 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       container.appendChild(successDiv)
       setTimeout(() => {
         try {
-          if (successDiv.parentNode === container) {
+          if (successDiv && successDiv.parentNode && container.contains(successDiv)) {
             container.removeChild(successDiv)
           }
         } catch (e) {
           console.warn("Error removing success message:", e)
+          // Try alternative removal method
+          try {
+            if (successDiv && successDiv.remove) {
+              successDiv.remove()
+            }
+          } catch (e2) {
+            console.warn("Alternative removal also failed:", e2)
+          }
         }
       }, 5000)
     } catch (e) {
@@ -855,9 +878,30 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       const container = containerRef.current
       if (container) {
         try {
-          container.innerHTML = ""
+          // Clear any pending timeouts or intervals first
+          const children = Array.from(container.children)
+          children.forEach((child) => {
+            try {
+              if (container.contains(child)) {
+                container.removeChild(child)
+              }
+            } catch (e) {
+              // Ignore removal errors during cleanup
+            }
+          })
+
+          // Final fallback
+          if (container.children.length > 0) {
+            container.innerHTML = ""
+          }
         } catch (e) {
           console.warn("Error cleaning up container:", e)
+          try {
+            container.innerHTML = ""
+          } catch (e2) {
+            // If even innerHTML fails, just log and continue
+            console.warn("Complete cleanup failed:", e2)
+          }
         }
       }
     }
