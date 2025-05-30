@@ -26,17 +26,23 @@ import {
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
+import { Available_Themes } from "@/constants/themes" // Declare or import Available_Themes
 
 interface MermaidProps {
   chart: string
   isFullscreen?: boolean
   onFullscreenChange?: (fullscreen: boolean) => void
   isStandalone?: boolean
+  onRenderError?: (errorMessage: string, faultyCode: string) => void // New prop
 }
 
-const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
-
-export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
+export function Mermaid({
+  chart,
+  isFullscreen = false,
+  onFullscreenChange,
+  isStandalone = false,
+  onRenderError, // Add new prop
+}: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
@@ -642,6 +648,9 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           console.error("Mermaid rendering error:", error)
           const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
           setError(errorMessage)
+          if (onRenderError) {
+            onRenderError(errorMessage, cleanedCode) // Pass the code that caused the error
+          }
 
           const errorDiv = document.createElement("div")
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
@@ -711,7 +720,17 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setIsRendering(false)
       }
     },
-    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
+    [
+      isClient,
+      autoFit,
+      handleFitToScreen,
+      isDragging,
+      wasFixed,
+      screenSize,
+      interactionMode,
+      selectedElement,
+      onRenderError,
+    ],
   )
 
   // Update transform when zoom or pan changes

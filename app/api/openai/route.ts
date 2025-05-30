@@ -105,7 +105,10 @@ CRITICAL RULES:
 6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
 7. ALWAYS use proper Mermaid syntax for each diagram type
 8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
+9. Ensure all syntax follows official Mermaid documentation.
++ If the user provides your previous erroneous code and an error message, your task is to FIX that code.
++ ${retryInstructions}
++ ${contextInstructions}
 
 SEQUENCE DIAGRAM SYNTAX RULES:
 - CORRECT: "ParticipantA ->> ParticipantB: Message"

@@ -75,6 +75,8 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatScrollContainerRef = useRef<HTMLDivElement>(null)
 
+  const [renderErrorContext, setRenderErrorContext] = useState<{ message: string; code: string } | null>(null)
+
   useEffect(() => {
     setIsClient(true)
   }, [])
@@ -194,6 +196,7 @@ export default function Home() {
       attemptNumber = 0,
       previousErrors: string[] = [],
       isModification = false,
+      fixContext?: { originalUserQuery: string; faultyCode: string; errorMessage: string },
     ): Promise<{ success: boolean; code?: string; error?: string }> => {
       const maxRetries = 3
 
@@ -201,18 +204,33 @@ export default function Home() {
         // Determine if the user is asking for a specific diagram type
         const diagramType = detectDiagramType(userMessage)
 
+        let apiUserMessage = userMessage
+        if (fixContext) {
+          apiUserMessage = `The user originally requested: "${fixContext.originalUserQuery}"
+
+You previously generated the following Mermaid code:
+\`\`\`mermaid
+${fixContext.faultyCode}
+\`\`\`
+
+This code resulted in the following rendering error(s): "${fixContext.errorMessage}"
+
+Please analyze the error and the original request, then provide a corrected version of the Mermaid code.
+Output ONLY the valid, corrected Mermaid code, starting directly with the diagram type keyword. Do not include any other explanatory text.`
+        }
+
         const response = await fetch("/api/openai", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            messages: [...currentMessages, { role: "user", content: userMessage }],
+            messages: [...currentMessages, { role: "user", content: apiUserMessage }],
             model: "gpt-3.5-turbo",
             retryAttempt: attemptNumber,
             previousErrors: previousErrors,
-            currentDiagram: outputCode, // Send current diagram for context
-            isModification: isModification,
+            currentDiagram: fixContext ? fixContext.faultyCode : outputCode,
+            isModification: fixContext ? true : isModification,
             diagramType: diagramType,
           }),
         })
@@ -274,6 +292,7 @@ export default function Home() {
               attemptNumber + 1,
               newErrors,
               isModification,
+              fixContext,
             )
           } else {
             return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
@@ -299,6 +318,7 @@ export default function Home() {
             attemptNumber + 1,
             newErrors,
             isModification,
+            fixContext,
           )
         } else {
           return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
@@ -328,6 +348,7 @@ export default function Home() {
     setRetryCount(0)
     setRetryAttempts(0)
     setRetryHistory([])
+    setRenderErrorContext(null)
 
     // Check if this is a modification request
     const isModificationRequest =
@@ -454,20 +475,88 @@ export default function Home() {
     [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
   )
 
-  const handleRetry = useCallback(() => {
-    if (draftMessage) {
-      handleSubmit()
-    } else if (messages.length > 0) {
-      // Retry the last message
-      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
-      if (lastUserMessage) {
-        setDraftMessage(lastUserMessage.content)
-        setTimeout(() => {
-          handleSubmit()
-        }, 100)
-      }
+  const handleRetry = useCallback(async () => {
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
+    if (!lastUserMessage && !draftMessage) return
+
+    const originalQuery = lastUserMessage ? lastUserMessage.content : draftMessage
+
+    // Clear previous visual error states before retry
+    setError("")
+    setDraftOutputCode("") // Clear any stale draft
+    setIsLoading(true)
+    setIsRetrying(true) // Indicate retry process starts
+    setRetryAttempts(0) // Reset UI retry counter for this specific retry action
+    setRetryHistory([]) // Reset UI retry history
+
+    // Add a message to chat indicating a fix attempt
+    const fixAttemptMessage: Message = {
+      role: "assistant",
+      content: renderErrorContext
+        ? `🔧 Attempting to automatically fix the previous diagram error...`
+        : `🤔 Retrying the last request...`,
     }
-  }, [draftMessage, messages, handleSubmit])
+    setMessages((prev) => [...prev, fixAttemptMessage])
+
+    try {
+      let result
+      if (renderErrorContext) {
+        // We have a rendering error, try to fix it
+        result = await generateDiagramWithRetry(
+          "", // User message is constructed inside generateDiagramWithRetry using fixContext
+          messages, // Pass current messages for context
+          0, // Start retry count for this fix attempt
+          [renderErrorContext.message], // Pass the render error as a previousError
+          true, // isModification is true because we are fixing
+          {
+            originalUserQuery: originalQuery,
+            faultyCode: renderErrorContext.code,
+            errorMessage: renderErrorContext.message,
+          },
+        )
+        setRenderErrorContext(null) // Clear context after attempting fix
+      } else {
+        // Standard retry of the last user message
+        result = await generateDiagramWithRetry(originalQuery, messages, 0, [], false)
+      }
+
+      if (result.success && result.code) {
+        setOutputCode(result.code)
+        await generateSummaryAndSuggestions(result.code)
+        if (retryAttempts > 0 || renderErrorContext) {
+          // Check component state for retries or if it was a fix
+          const successRetryMessage: Message = {
+            role: "assistant",
+            content: `✅ Diagram ${renderErrorContext ? "fixed and" : ""} generated successfully${retryAttempts > 0 ? ` after ${retryAttempts + 1} attempts` : ""}!`,
+          }
+          setMessages((prev) => [...prev, successRetryMessage])
+        }
+      } else {
+        throw new Error(result.error || "Failed to generate valid diagram after retry.")
+      }
+    } catch (error: any) {
+      console.error("Final retry/fix error:", error)
+      const finalErrorMsg = error.message || "An unknown error occurred during retry/fix."
+      setError(
+        finalErrorMsg +
+          (retryHistory.length > 0
+            ? `\n\nRetry attempts details:\n${retryHistory.map((e, i) => `Attempt ${i + 1}: ${e}`).join("\n")}`
+            : ""),
+      )
+    } finally {
+      setIsLoading(false)
+      setIsRetrying(false)
+    }
+  }, [
+    messages,
+    draftMessage,
+    handleSubmit,
+    generateDiagramWithRetry,
+    renderErrorContext,
+    retryAttempts,
+    retryHistory,
+    generateSummaryAndSuggestions,
+  ])
 
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
@@ -739,6 +828,10 @@ export default function Home() {
                 isFullscreen={isFullscreen}
                 onFullscreenChange={setIsFullscreen}
                 isStandalone={!chatVisible}
+                onRenderError={(message, faultyCode) => {
+                  setRenderErrorContext({ message, code: faultyCode })
+                  setError(`Diagram rendering failed: ${message}. Attempting to fix...`)
+                }}
               />
             ) : (
               <div className="h-full flex items-center justify-center">
