@@ -20,35 +20,34 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
 import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
-import { APP_CONFIG } from "@/lib/constants"
 
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
   flowchart: `graph TD
-  A[Start] --> B[Process]
-  B --> C{Decision}
-  C -->|Yes| D[Action 1]
-  C -->|No| E[Action 2]
-  D --> F[End]
-  E --> F`,
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Action 1]
+    C -->|No| E[Action 2]
+    D --> F[End]
+    E --> F`,
   sequence: `sequenceDiagram
-  participant User
-  participant System
-  participant Database
-  
-  User->>System: Request data
-  System->>Database: Query data
-  Database-->>System: Return results
-  System-->>User: Display results`,
+    participant User
+    participant System
+    participant Database
+    
+    User->>System: Request data
+    System->>Database: Query data
+    Database-->>System: Return results
+    System-->>User: Display results`,
   journey: `journey
-  title User Journey
-  section Login
-    Enter credentials: 3: User
-    Validate: 2: System
-    Success: 5: User
-  section Dashboard
-    View data: 4: User
-    Interact: 3: User`,
+    title User Journey
+    section Login
+      Enter credentials: 3: User
+      Validate: 2: System
+      Success: 5: User
+    section Dashboard
+      View data: 4: User
+      Interact: 3: User`,
 }
 
 export default function Home() {
@@ -170,8 +169,6 @@ export default function Home() {
             const summaryMessage: Message = {
               role: "assistant",
               content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
-              id: `ai-${Date.now()}`,
-              timestamp: Date.now(),
             }
 
             setMessages((prev) => [...prev, summaryMessage])
@@ -179,8 +176,6 @@ export default function Home() {
             const fallbackMessage: Message = {
               role: "assistant",
               content: "✅ Diagram generated successfully! The diagram looks good and follows proper syntax.",
-              id: `ai-${Date.now()}`,
-              timestamp: Date.now(),
             }
             setMessages((prev) => [...prev, fallbackMessage])
           }
@@ -321,8 +316,6 @@ export default function Home() {
     const newMessage: Message = {
       role: "user",
       content: draftMessage,
-      id: `user-${Date.now()}`,
-      timestamp: Date.now(),
     }
     const newMessages = [...messages, newMessage]
 
@@ -360,8 +353,6 @@ export default function Home() {
           const retryMessage: Message = {
             role: "assistant",
             content: `✅ **Diagram generated successfully after ${retryAttempts + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
-            id: `retry-success-${Date.now()}`,
-            timestamp: Date.now(),
           }
           setMessages((prev) => [...prev, retryMessage])
         }
@@ -428,8 +419,6 @@ export default function Home() {
       const newMessage: Message = {
         role: "user",
         content: suggestion, // Just show the clean suggestion text to user
-        id: `user-${Date.now()}`,
-        timestamp: Date.now(),
       }
       const newMessages = [...messages, newMessage]
 
@@ -539,11 +528,7 @@ export default function Home() {
                 className={`w-2 h-2 rounded-full ${isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"}`}
               ></span>
               <span>
-                {isLoading
-                  ? isRetrying
-                    ? `Retrying... (${retryAttempts + 1}/${APP_CONFIG.MAX_RETRIES})`
-                    : "Generating..."
-                  : "Ready"}
+                {isLoading ? (isRetrying ? `Retrying... (${retryAttempts + 1}/3)` : "Generating...") : "Ready"}
               </span>
             </div>
           </div>
@@ -635,7 +620,7 @@ export default function Home() {
             <div className="space-y-4 p-4">
               {messages.map((message, index) => (
                 <ChatMessage
-                  key={message.id || `msg-${index}`}
+                  key={`${message.content}-${index}`}
                   message={message.content}
                   role={message.role}
                   onSuggestionClick={handleSuggestionClick}
@@ -648,9 +633,7 @@ export default function Home() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">
-                        {isRetrying
-                          ? `Generating diagram (Attempt ${retryAttempts + 1}/${APP_CONFIG.MAX_RETRIES})`
-                          : "Generating diagram..."}
+                        {isRetrying ? `Generating diagram (Attempt ${retryAttempts + 1}/3)` : "Generating diagram..."}
                       </span>
                       {isRetrying && <Clock className="h-4 w-4 text-blue-600" />}
                     </div>
@@ -694,7 +677,7 @@ export default function Home() {
         {/* Input - Fixed at bottom */}
         <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
           <ChatInput
-            messageContent={draftMessage}
+            messageCotent={draftMessage}
             onChange={setDraftMessage}
             onSubmit={handleSubmit}
             isLoading={isLoading}

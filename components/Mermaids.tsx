@@ -1,9 +1,12 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
 import {
   Copy,
+  Palette,
   AlertCircle,
   Code,
   CheckCircle,
@@ -11,20 +14,18 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   RotateCcw,
   Download,
   Maximize,
   MousePointer2,
   Hand,
-  X,
-  Grid,
+  Navigation,
+  Settings,
+  Move,
 } from "lucide-react"
 import type { Theme } from "@/types/type"
-import { sanitizeMermaidCode, createFallbackDiagram } from "@/lib/utils"
-import { Button } from "./ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip"
-import { APP_CONFIG } from "@/lib/constants"
-import { toast } from "sonner"
+import { sanitizeMermaidCode } from "@/lib/utils"
 
 interface MermaidProps {
   chart: string
@@ -33,38 +34,20 @@ interface MermaidProps {
   isStandalone?: boolean
 }
 
-// Helper function to validate Mermaid code (basic check)
-function isPotentiallyValidMermaid(code: string): boolean {
-  if (!code || typeof code !== "string") return false
-  const trimmedCode = code.trim()
-  if (trimmedCode.length < 5) return false // Arbitrary short length check
-  const firstLine = trimmedCode.split("\n")[0].toLowerCase()
-  const validStarts = [
-    "graph",
-    "flowchart",
-    "sequencediagram",
-    "classdiagram",
-    "journey",
-    "gantt",
-    "statediagram",
-    "erdiagram",
-    "pie",
-    "mindmap",
-    "timeline",
-  ]
-  return validStarts.some((start) => firstLine.startsWith(start))
-}
+const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
 export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
-  const [theme, setTheme] = useState<Theme>(APP_CONFIG.DEFAULT_MERMAID_THEME as Theme)
+  const [label, setLabel] = useState<string>("Copy SVG")
+  const [theme, setTheme] = useState<Theme>("default")
   const [isClient, setIsClient] = useState(false)
   const [isRendering, setIsRendering] = useState(false)
   const [error, setError] = useState<string>("")
   const [showCode, setShowCode] = useState(false)
   const [sanitizedCode, setSanitizedCode] = useState("")
   const [wasFixed, setWasFixed] = useState(false)
+  const [wasConverted, setWasConverted] = useState(false)
 
   // Enhanced zoom and pan state with better control
   const [zoom, setZoom] = useState(1)
@@ -76,6 +59,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [autoFit, setAutoFit] = useState(true)
 
   // Enhanced interaction state
+  const [isElementDragging, setIsElementDragging] = useState(false)
+  const [selectedElement, setSelectedElement] = useState<Element | null>(null)
   const [interactionMode, setInteractionMode] = useState<"pan" | "select">("pan")
 
   // Control panel state
@@ -89,323 +74,384 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   useEffect(() => {
     setIsClient(true)
     const savedTheme = localStorage.getItem("mermaid-theme")
-    if (savedTheme && APP_CONFIG.AVAILABLE_MERMAID_THEMES.includes(savedTheme)) {
+    if (savedTheme && Available_Themes.includes(savedTheme as Theme)) {
       setTheme(savedTheme as Theme)
     }
 
     // Handle responsive breakpoints
     const handleResize = () => {
       const width = window.innerWidth
-      if (width < 768) setScreenSize("mobile")
-      else if (width < 1024) setScreenSize("tablet")
-      else setScreenSize("desktop")
+      if (width < 768) {
+        setScreenSize("mobile")
+        setControlsExpanded(false)
+      } else if (width < 1024) {
+        setScreenSize("tablet")
+      } else {
+        setScreenSize("desktop")
+      }
     }
 
     handleResize()
     window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
 
-  const initializeMermaid = useCallback(
-    (currentTheme: Theme) => {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: "loose",
-        theme: currentTheme,
-        logLevel: "error", // Only log errors
-        suppressErrorRendering: true, // We handle error display
-        flowchart: { useMaxWidth: false, htmlLabels: true, curve: "basis" },
-        sequence: {
-          useMaxWidth: false,
-          showSequenceNumbers: true,
-          wrap: true,
-          width: screenSize === "mobile" ? 120 : 150,
-        },
-        // Add other diagram type configs if needed
-      })
-    },
-    [screenSize],
-  )
+    // Initialize mermaid with responsive settings
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "loose",
+      theme: "default",
+      logLevel: "error",
+      flowchart: {
+        useMaxWidth: false,
+        htmlLabels: true,
+        curve: "basis",
+      },
+      journey: {
+        useMaxWidth: false,
+      },
+      sequence: {
+        useMaxWidth: false,
+        showSequenceNumbers: true,
+        wrap: true,
+        width: screenSize === "mobile" ? 120 : 150,
+      },
+      gantt: {
+        useMaxWidth: false,
+      },
+    })
+
+    // Auto-hide controls on mobile after interaction
+    const timer = setTimeout(() => {
+      if (screenSize === "mobile" && !isFullscreen && !isStandalone) {
+        setShowControls(false)
+      }
+    }, 3000)
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener("resize", handleResize)
+    }
+  }, [isFullscreen, isStandalone, screenSize])
 
   // Enhanced mouse and touch interactions with better zoom control
-  const renderChart = useCallback(
-    async (chartCode: string, currentTheme: Theme) => {
-      const diagramContainer = containerRef.current
-      if (!chartCode || !diagramContainer || !isClient) return
-
-      setIsRendering(true)
-      setError("")
-      setWasFixed(false)
-
-      // Clear previous content
-      diagramContainer.innerHTML = ""
-      diagramContainer.removeAttribute("data-processed")
-
-      let currentSanitizedCode = ""
-      try {
-        currentSanitizedCode = sanitizeMermaidCode(chartCode)
-        setSanitizedCode(currentSanitizedCode)
-        if (currentSanitizedCode !== chartCode.trim()) {
-          setWasFixed(true)
-          toast.info("Diagram syntax automatically corrected.", { duration: 3000 })
-        }
-      } catch (e) {
-        console.error("Sanitization error:", e)
-        setError("Failed to sanitize diagram code.")
-        currentSanitizedCode = createFallbackDiagram(chartCode, "Sanitization Error")
-        setSanitizedCode(currentSanitizedCode)
-        setWasFixed(true)
-      }
-
-      if (!isPotentiallyValidMermaid(currentSanitizedCode)) {
-        setError("Invalid Mermaid code structure after sanitization.")
-        currentSanitizedCode = createFallbackDiagram(currentSanitizedCode, "Invalid Structure")
-        setSanitizedCode(currentSanitizedCode)
-        setWasFixed(true)
-      }
-
-      try {
-        initializeMermaid(currentTheme)
-        const id = `mermaid-diagram-${Date.now()}`
-        const { svg } = await mermaid.render(id, currentSanitizedCode)
-
-        const wrapper = document.createElement("div")
-        wrapper.innerHTML = svg
-        wrapper.style.transformOrigin = "center center"
-        wrapper.style.transition = isDragging ? "none" : "transform 0.2s ease-out"
-        wrapper.style.width = "fit-content"
-        wrapper.style.height = "fit-content"
-        wrapper.style.position = "absolute"
-        wrapper.style.top = "50%"
-        wrapper.style.left = "50%"
-        diagramContainer.appendChild(wrapper)
-
-        if (autoFit) {
-          setTimeout(() => handleFitToScreen(), 50) // Slight delay for layout
-        }
-      } catch (e: any) {
-        console.error("Mermaid rendering error:", e)
-        const errorMessage = e.message || "Unknown rendering error"
-        setError(`Rendering failed: ${errorMessage}. Displaying fallback.`)
-        toast.error(`Diagram rendering failed: ${errorMessage}`)
-
-        // Attempt to render fallback diagram
-        try {
-          const fallbackCode = createFallbackDiagram(chartCode, errorMessage)
-          setSanitizedCode(fallbackCode) // Show fallback code if user views code
-          initializeMermaid(currentTheme) // Re-initialize for fallback
-          const fallbackId = `mermaid-fallback-${Date.now()}`
-          const { svg: fallbackSvg } = await mermaid.render(fallbackId, fallbackCode)
-          diagramContainer.innerHTML = fallbackSvg // Directly set SVG for fallback
-          // Adjust styles for fallback if needed
-          const fallbackSvgElement = diagramContainer.querySelector("svg")
-          if (fallbackSvgElement) {
-            fallbackSvgElement.style.position = "absolute"
-            fallbackSvgElement.style.top = "50%"
-            fallbackSvgElement.style.left = "50%"
-            fallbackSvgElement.style.transform = "translate(-50%, -50%)"
-            fallbackSvgElement.style.maxWidth = "90%"
-            fallbackSvgElement.style.maxHeight = "90%"
-          }
-        } catch (fallbackError: any) {
-          console.error("Fallback diagram rendering error:", fallbackError)
-          diagramContainer.innerHTML = `<div class="text-destructive p-4 text-center">Failed to render diagram and fallback. Error: ${fallbackError.message}</div>`
-        }
-        setWasFixed(true) // Indicate that a fix (fallback) was applied
-      } finally {
-        setIsRendering(false)
-      }
-    },
-    [isClient, autoFit, isDragging, initializeMermaid], // Removed handleFitToScreen from deps to break cycle
-  )
-
-  const handleFitToScreen = useCallback(() => {
-    const diagramDisplayContainer = svgContainerRef.current // This is the scrollable/pannable area
-    const renderedSvgWrapper = containerRef.current?.firstChild as HTMLElement // The div containing the <svg>
-
-    if (
-      diagramDisplayContainer &&
-      renderedSvgWrapper &&
-      renderedSvgWrapper.offsetWidth > 0 &&
-      renderedSvgWrapper.offsetHeight > 0
-    ) {
-      const containerRect = diagramDisplayContainer.getBoundingClientRect()
-      const svgRect = renderedSvgWrapper.getBoundingClientRect() // Get actual rendered size
-
-      // Use renderedSvgWrapper dimensions for scaling
-      const svgWidth = renderedSvgWrapper.offsetWidth
-      const svgHeight = renderedSvgWrapper.offsetHeight
-
-      if (svgWidth === 0 || svgHeight === 0) return // Avoid division by zero
-
-      const padding = 0.9 // 90% of container
-      const scaleX = (containerRect.width * padding) / svgWidth
-      const scaleY = (containerRect.height * padding) / svgHeight
-      const newZoom = Math.min(scaleX, scaleY, 3) // Cap max zoom at 3x
-
-      setZoom(newZoom)
-      setPan({ x: 0, y: 0 }) // Center the diagram
-      setAutoFit(true)
-    }
-  }, []) // Removed screenSize from deps as it's handled by resize effect
-
-  const handleZoomIn = useCallback(() => {
-    setZoom((prevZoom) => Math.min(prevZoom * 1.1, 5))
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    setZoom((prevZoom) => Math.max(prevZoom * 0.9, 0.1))
-  }, [])
-
   useEffect(() => {
-    if (isClient && chart) {
-      renderChart(chart, theme)
-    }
-  }, [chart, theme, isClient, renderChart])
+    const container = svgContainerRef.current
+    if (!container) return
 
-  useEffect(() => {
-    const diagramDisplayContainer = svgContainerRef.current
-    if (!diagramDisplayContainer) return
+    let lastTouchDistance = 0
+    let lastTouchCenter = { x: 0, y: 0 }
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const zoomSensitivity = 0.1
+
+      // More controlled zoom with smaller increments
+      const zoomSensitivity = screenSize === "mobile" ? 0.05 : 0.1
       const delta = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity
-      const rect = diagramDisplayContainer.getBoundingClientRect()
+
+      // Get mouse position relative to container
+      const rect = container.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
+
+      // Calculate new zoom with limits
       const newZoom = Math.max(0.1, Math.min(5, zoom + delta))
+
+      // Calculate new pan to zoom towards mouse position
       const zoomRatio = newZoom / zoom
       const newPanX = mouseX - (mouseX - pan.x) * zoomRatio
       const newPanY = mouseY - (mouseY - pan.y) * zoomRatio
+
       setZoom(newZoom)
       setPan({ x: newPanX, y: newPanY })
+      setShowControls(true)
       setAutoFit(false)
     }
 
     const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element
+
+      // Check if clicking on a diagram element
+      if (target.closest("g[class*='node'], g[class*='edgePath'], g[class*='actor'], g[class*='rect']")) {
+        if (interactionMode === "select") {
+          setSelectedElement(target.closest("g") as Element)
+          setIsElementDragging(true)
+          e.stopPropagation()
+          return
+        }
+      }
+
+      // Pan mode or no element selected
       if (e.button === 0 && interactionMode === "pan") {
         setIsDragging(true)
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
-        diagramDisplayContainer.style.cursor = "grabbing"
+        container.style.cursor = "grabbing"
         setAutoFit(false)
       }
     }
+
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging && interactionMode === "pan") {
-        setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+        setPan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y,
+        })
+      } else if (isElementDragging && selectedElement) {
+        // Handle element dragging (visual feedback only for now)
+        const rect = container.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+
+        // Add visual feedback for element selection
+        selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
       }
-    }
-    const handleMouseUpOrLeave = () => {
-      setIsDragging(false)
-      diagramDisplayContainer.style.cursor = interactionMode === "pan" ? (zoom > 1 ? "grab" : "default") : "crosshair"
+      setShowControls(true)
     }
 
-    diagramDisplayContainer.addEventListener("wheel", handleWheel, { passive: false })
-    diagramDisplayContainer.addEventListener("mousedown", handleMouseDown)
-    window.addEventListener("mousemove", handleMouseMove) // Listen on window for dragging outside
-    window.addEventListener("mouseup", handleMouseUpOrLeave)
-    diagramDisplayContainer.addEventListener("mouseleave", handleMouseUpOrLeave)
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      setIsElementDragging(false)
+      container.style.cursor = interactionMode === "pan" ? (zoom > 1 ? "grab" : "default") : "crosshair"
+
+      if (selectedElement) {
+        selectedElement.style.filter = ""
+      }
+    }
+
+    const handleMouseLeave = () => {
+      setIsDragging(false)
+      setIsElementDragging(false)
+      container.style.cursor = "default"
+
+      if (selectedElement) {
+        selectedElement.style.filter = ""
+      }
+    }
+
+    // Enhanced touch events for mobile
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault()
+
+      if (e.touches.length === 1) {
+        const touch = e.touches[0]
+        setIsDragging(true)
+        setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+      } else if (e.touches.length === 2) {
+        // Pinch zoom setup
+        const touch1 = e.touches[0]
+        const touch2 = e.touches[1]
+        lastTouchDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+        lastTouchCenter = {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2,
+        }
+      }
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+
+      if (e.touches.length === 1 && isDragging) {
+        const touch = e.touches[0]
+        setPan({
+          x: touch.clientX - dragStart.x,
+          y: touch.clientY - dragStart.y,
+        })
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        const touch1 = e.touches[0]
+        const touch2 = e.touches[1]
+        const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+
+        if (lastTouchDistance > 0) {
+          const scale = distance / lastTouchDistance
+          const newZoom = Math.max(0.1, Math.min(5, zoom * scale))
+
+          const center = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2,
+          }
+
+          const rect = container.getBoundingClientRect()
+          const centerX = center.x - rect.left
+          const centerY = center.y - rect.top
+
+          const zoomRatio = newZoom / zoom
+          const newPanX = centerX - (centerX - pan.x) * zoomRatio
+          const newPanY = centerY - (centerY - pan.y) * zoomRatio
+
+          setZoom(newZoom)
+          setPan({ x: newPanX, y: newPanY })
+        }
+
+        lastTouchDistance = distance
+        lastTouchCenter = {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2,
+        }
+      }
+    }
+
+    const handleTouchEnd = () => {
+      setIsDragging(false)
+      setIsElementDragging(false)
+      lastTouchDistance = 0
+    }
+
+    // Add event listeners with proper options
+    container.addEventListener("wheel", handleWheel, { passive: false })
+    container.addEventListener("mousedown", handleMouseDown)
+    container.addEventListener("mousemove", handleMouseMove)
+    container.addEventListener("mouseup", handleMouseUp)
+    container.addEventListener("mouseleave", handleMouseLeave)
+    container.addEventListener("touchstart", handleTouchStart, { passive: false })
+    container.addEventListener("touchmove", handleTouchMove, { passive: false })
+    container.addEventListener("touchend", handleTouchEnd)
 
     return () => {
-      diagramDisplayContainer.removeEventListener("wheel", handleWheel)
-      diagramDisplayContainer.removeEventListener("mousedown", handleMouseDown)
-      window.removeEventListener("mousemove", handleMouseMove)
-      window.removeEventListener("mouseup", handleMouseUpOrLeave)
-      diagramDisplayContainer.removeEventListener("mouseleave", handleMouseUpOrLeave)
+      container.removeEventListener("wheel", handleWheel)
+      container.removeEventListener("mousedown", handleMouseDown)
+      container.removeEventListener("mousemove", handleMouseMove)
+      container.removeEventListener("mouseup", handleMouseUp)
+      container.removeEventListener("mouseleave", handleMouseLeave)
+      container.removeEventListener("touchstart", handleTouchStart)
+      container.removeEventListener("touchmove", handleTouchMove)
+      container.removeEventListener("touchend", handleTouchEnd)
     }
-  }, [zoom, pan, isDragging, dragStart, interactionMode])
+  }, [zoom, pan, isDragging, dragStart, interactionMode, isElementDragging, selectedElement, screenSize])
 
-  useEffect(() => {
-    const renderedSvgWrapper = containerRef.current?.firstChild as HTMLElement
-    if (renderedSvgWrapper) {
-      renderedSvgWrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
+  const copyToClipboard = useCallback((text: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => {
+        const el = document.createElement("textarea")
+        el.value = text
+        el.style.position = "absolute"
+        el.style.left = "-9999px"
+        document.body.appendChild(el)
+        el.select()
+        document.execCommand("copy")
+        document.body.removeChild(el)
+      })
     }
-  }, [zoom, pan])
-
-  const copyToClipboard = useCallback((text: string, type: string) => {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        toast.success(`${type} copied to clipboard!`)
-      })
-      .catch(() => {
-        toast.error(`Failed to copy ${type}.`)
-      })
   }, [])
 
-  const handleCopySvg = useCallback(() => {
-    const svgElement = containerRef.current?.querySelector("svg")
-    if (svgElement) copyToClipboard(svgElement.outerHTML, "SVG")
-    else toast.error("No SVG found to copy.")
-  }, [copyToClipboard])
+  const handleCopyClick = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
 
-  const handleCopyCode = useCallback(() => {
-    if (sanitizedCode) copyToClipboard(sanitizedCode, "Mermaid code")
-    else toast.error("No code found to copy.")
+    try {
+      const svgElement = container.querySelector("svg")
+      if (svgElement) {
+        const svgCode = svgElement.outerHTML
+        copyToClipboard(svgCode)
+        setLabel("Copied!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      } else if (sanitizedCode) {
+        copyToClipboard(sanitizedCode)
+        setLabel("Copied code!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      }
+    } catch (e) {
+      console.error("Error copying SVG:", e)
+      if (sanitizedCode) {
+        copyToClipboard(sanitizedCode)
+        setLabel("Copied code!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      }
+    }
   }, [copyToClipboard, sanitizedCode])
 
-  const handleDownload = useCallback((format: "svg" | "png") => {
-    const svgElement = containerRef.current?.querySelector("svg")
-    if (!svgElement) {
-      toast.error("No diagram to download.")
-      return
+  const handleCodeCopy = useCallback(() => {
+    if (sanitizedCode) {
+      copyToClipboard(sanitizedCode)
+      setLabel("Copied code!")
+      setTimeout(() => setLabel("Copy SVG"), 2000)
     }
-    const svgData = new XMLSerializer().serializeToString(svgElement)
-    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
+  }, [copyToClipboard, sanitizedCode])
 
-    if (format === "svg") {
-      link.download = "diagram.svg"
-      link.click()
-      toast.success("SVG downloaded.")
-    } else {
-      // PNG
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement("canvas")
-        // Add padding for better PNG export
-        const padding = 20
-        canvas.width = img.width + padding * 2
-        canvas.height = img.height + padding * 2
-        const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.fillStyle = "white" // Set background to white for PNG
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-          ctx.drawImage(img, padding, padding)
-          const pngUrl = canvas.toDataURL("image/png")
-          link.href = pngUrl
-          link.download = "diagram.png"
-          link.click()
-          toast.success("PNG downloaded.")
-        } else {
-          toast.error("Failed to create PNG.")
-        }
-        URL.revokeObjectURL(url) // Revoke blob URL after image is loaded
-      }
-      img.onerror = () => {
-        toast.error("Failed to load SVG for PNG conversion.")
+  const handleDownload = useCallback((format: "svg" | "png" = "svg") => {
+    const container = containerRef.current
+    if (!container) return
+
+    const svgElement = container.querySelector("svg")
+    if (svgElement) {
+      if (format === "svg") {
+        const svgData = svgElement.outerHTML
+        const blob = new Blob([svgData], { type: "image/svg+xml" })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "diagram.svg"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
         URL.revokeObjectURL(url)
+      } else {
+        const canvas = document.createElement("canvas")
+        const ctx = canvas.getContext("2d")
+        const img = new Image()
+
+        img.crossOrigin = "anonymous"
+        img.onload = () => {
+          canvas.width = img.width
+          canvas.height = img.height
+          ctx?.drawImage(img, 0, 0)
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob)
+              const link = document.createElement("a")
+              link.href = url
+              link.download = "diagram.png"
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+              URL.revokeObjectURL(url)
+            }
+          }, "image/png")
+        }
+
+        const svgData = svgElement.outerHTML
+        const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
+        const svgUrl = URL.createObjectURL(svgBlob)
+        img.src = svgUrl
       }
-      img.src = url // Use blob URL directly
-      return // Don't revoke URL until image is processed for PNG
     }
-    URL.revokeObjectURL(url)
   }, [])
-
-  const handleThemeChange = useCallback((newTheme: Theme) => {
-    setTheme(newTheme)
-    localStorage.setItem("mermaid-theme", newTheme)
-    // Re-render is handled by useEffect watching `theme`
-  }, [])
-
-  const controlButtonClass =
-    "p-2 rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:pointer-events-none"
-  const activeControlButtonClass = "bg-primary text-primary-foreground hover:bg-primary/90"
 
   // Enhanced zoom controls with better increments
+  const handleZoomIn = useCallback(() => {
+    const increment = screenSize === "mobile" ? 0.15 : 0.2
+    setZoom((prev) => Math.min(5, prev + increment))
+    setShowControls(true)
+    setAutoFit(false)
+  }, [screenSize])
+
+  const handleZoomOut = useCallback(() => {
+    const increment = screenSize === "mobile" ? 0.15 : 0.2
+    setZoom((prev) => Math.max(0.1, prev - increment))
+    setShowControls(true)
+    setAutoFit(false)
+  }, [screenSize])
+
+  const handleFitToScreen = useCallback(() => {
+    const container = svgContainerRef.current
+    const svgWrapper = containerRef.current?.querySelector("div")
+
+    if (container && svgWrapper) {
+      const containerRect = container.getBoundingClientRect()
+      const svgRect = svgWrapper.getBoundingClientRect()
+
+      const padding = screenSize === "mobile" ? 0.8 : 0.9
+      const scaleX = (containerRect.width * padding) / svgRect.width
+      const scaleY = (containerRect.height * padding) / svgRect.height
+      const newZoom = Math.min(scaleX, scaleY, 3)
+
+      setZoom(newZoom)
+      setPan({ x: 0, y: 0 })
+      setAutoFit(true)
+      setShowControls(true)
+    }
+  }, [screenSize])
+
   const handleResetView = useCallback(() => {
     setZoom(1)
     setPan({ x: 0, y: 0 })
@@ -419,249 +465,853 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
   }, [isFullscreen, onFullscreenChange])
 
+  const renderChart = useCallback(
+    async (chartCode: string, selectedTheme: Theme) => {
+      const container = containerRef.current
+      if (!chartCode || !container || !isClient) return
+
+      try {
+        setIsRendering(true)
+        setError("")
+        setWasFixed(false)
+        setWasConverted(false)
+
+        // Clear previous content safely
+        while (container.firstChild) {
+          try {
+            container.removeChild(container.firstChild)
+          } catch (e) {
+            console.warn("Error removing child:", e)
+            container.innerHTML = ""
+            break
+          }
+        }
+
+        container.removeAttribute("data-processed")
+
+        const isOldSyntax =
+          chartCode.includes("=>") &&
+          (chartCode.includes("start:") || chartCode.includes("operation:") || chartCode.includes("condition:"))
+
+        const cleanedCode = sanitizeMermaidCode(chartCode)
+        setSanitizedCode(cleanedCode)
+
+        const codeWasFixed = cleanedCode !== chartCode.trim()
+        setWasFixed(codeWasFixed && !isOldSyntax)
+        setWasConverted(isOldSyntax)
+
+        if (!cleanedCode) {
+          throw new Error("Empty diagram code")
+        }
+
+        try {
+          // Initialize mermaid with responsive settings
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "loose",
+            theme: selectedTheme,
+            logLevel: "error",
+            flowchart: {
+              useMaxWidth: false,
+              htmlLabels: true,
+              curve: "basis",
+              padding: screenSize === "mobile" ? 10 : 20,
+            },
+            journey: {
+              useMaxWidth: false,
+            },
+            sequence: {
+              useMaxWidth: false,
+              showSequenceNumbers: true,
+              wrap: true,
+              width: screenSize === "mobile" ? 120 : 150,
+            },
+            gantt: {
+              useMaxWidth: false,
+            },
+          })
+
+          const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+          let svg: string
+          try {
+            const result = await mermaid.render(id, cleanedCode)
+            svg = result.svg
+          } catch (renderError) {
+            console.warn("Initial render failed, attempting with simplified syntax:", renderError)
+            const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+            const simplifiedResult = await mermaid.render(id + "_simplified", simplifiedCode)
+            svg = simplifiedResult.svg
+            setWasFixed(true)
+          }
+
+          const wrapper = document.createElement("div")
+          wrapper.innerHTML = svg
+          wrapper.style.transformOrigin = "center center"
+          wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+          wrapper.style.width = "fit-content"
+          wrapper.style.height = "fit-content"
+          wrapper.style.position = "absolute"
+          wrapper.style.top = "50%"
+          wrapper.style.left = "50%"
+
+          // Add interaction classes for better element selection
+          const svgElement = wrapper.querySelector("svg")
+          if (svgElement) {
+            svgElement.style.userSelect = "none"
+            svgElement.style.pointerEvents = "auto"
+
+            // Add hover effects for interactive elements
+            const nodes = svgElement.querySelectorAll("g[class*='node'], g[class*='actor']")
+            nodes.forEach((node) => {
+              const element = node as HTMLElement
+              element.style.cursor = interactionMode === "select" ? "pointer" : "inherit"
+              element.addEventListener("mouseenter", () => {
+                if (interactionMode === "select") {
+                  element.style.filter = "brightness(1.1)"
+                }
+              })
+              element.addEventListener("mouseleave", () => {
+                if (element !== selectedElement) {
+                  element.style.filter = ""
+                }
+              })
+            })
+          }
+
+          try {
+            if (container && !container.contains(wrapper)) {
+              container.appendChild(wrapper)
+            }
+          } catch (e) {
+            console.error("Error appending wrapper:", e)
+            try {
+              container.innerHTML = ""
+              container.appendChild(wrapper)
+            } catch (innerError) {
+              console.error("Failed to append after clearing:", innerError)
+            }
+          }
+
+          if (autoFit) {
+            setTimeout(() => handleFitToScreen(), 100)
+          }
+
+          if (codeWasFixed || isOldSyntax || wasFixed) {
+            const successDiv = document.createElement("div")
+            let messageText = "Syntax automatically fixed"
+            let bgColor = "bg-green-50 border-green-200 text-green-700"
+
+            if (isOldSyntax) {
+              messageText = "Converted from old flowchart syntax"
+              bgColor = "bg-blue-50 border-blue-200 text-blue-700"
+            } else if (wasFixed) {
+              messageText = "Diagram simplified due to syntax errors"
+              bgColor = "bg-yellow-50 border-yellow-200 text-yellow-700"
+            }
+
+            const position = screenSize === "mobile" ? "top-2 left-2 right-2" : "top-4 left-4"
+            successDiv.className = `absolute ${position} ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
+            successDiv.innerHTML = `
+              <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+              </svg>
+              <span class="flex-1">${messageText}</span>
+            `
+
+            try {
+              container.appendChild(successDiv)
+              setTimeout(() => {
+                try {
+                  if (successDiv.parentNode === container) {
+                    container.removeChild(successDiv)
+                  } else if (successDiv.parentNode) {
+                    successDiv.parentNode.removeChild(successDiv)
+                  }
+                } catch (e) {
+                  console.warn("Error removing success message:", e)
+                  if (container.contains(successDiv)) {
+                    container.innerHTML = container.innerHTML
+                  }
+                }
+              }, 5000)
+            } catch (e) {
+              console.warn("Error adding success message:", e)
+            }
+          }
+        } catch (error) {
+          console.error("Mermaid rendering error:", error)
+          const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
+          setError(errorMessage)
+
+          const errorDiv = document.createElement("div")
+          errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
+
+          let errorContent = `
+            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
+            <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
+          `
+
+          if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
+            errorContent += `
+              <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+                <strong class="block mb-2">Common fixes:</strong>
+                • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
+                • Ensure participant names don't contain spaces or special characters<br>
+                • Verify all connections have proper arrow syntax (--&gt;)<br>
+                • Make sure all brackets and quotes are properly closed
+              </div>
+            `
+          }
+
+          const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"
+          errorContent += `
+            <div class="flex ${buttonLayout}">
+              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
+                Show Diagram Code
+              </button>
+              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
+                Try Simplified Version
+              </button>
+            </div>
+          `
+
+          errorDiv.innerHTML = errorContent
+
+          try {
+            container.innerHTML = ""
+            container.appendChild(errorDiv)
+          } catch (e) {
+            console.warn("Error adding error message:", e)
+          }
+
+          setTimeout(() => {
+            const showCodeBtn = document.getElementById("show-code-btn")
+            const retryBtn = document.getElementById("retry-simplified-btn")
+
+            if (showCodeBtn) {
+              showCodeBtn.addEventListener("click", () => setShowCode(true))
+            }
+
+            if (retryBtn) {
+              retryBtn.addEventListener("click", async () => {
+                try {
+                  const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+                  await renderChart(simplifiedCode, selectedTheme)
+                } catch (e) {
+                  console.error("Simplified render also failed:", e)
+                }
+              })
+            }
+          }, 0)
+        }
+      } catch (error) {
+        console.error("Mermaid rendering error:", error)
+        setError(error instanceof Error ? error.message : "Unknown rendering error")
+      } finally {
+        setIsRendering(false)
+      }
+    },
+    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
+  )
+
+  // Update transform when zoom or pan changes
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const wrapper = container.querySelector("div")
+    if (wrapper) {
+      wrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
+      wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+    }
+
+    return () => {
+      // Cleanup function
+    }
+  }, [zoom, pan, isDragging])
+
+  // Render chart when chart or theme changes
+  useEffect(() => {
+    if (isClient && chart) {
+      renderChart(chart, theme)
+    }
+
+    return () => {
+      const container = containerRef.current
+      if (container) {
+        try {
+          container.innerHTML = ""
+        } catch (e) {
+          console.warn("Error cleaning up container:", e)
+        }
+      }
+    }
+  }, [chart, theme, isClient, renderChart])
+
+  const handleThemeChange = useCallback(
+    async (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value as Theme
+      setTheme(value)
+      if (isClient) {
+        localStorage.setItem("mermaid-theme", value)
+        if (chart) {
+          await renderChart(chart, value)
+        }
+      }
+    },
+    [isClient, chart, renderChart],
+  )
+
   // Don't render anything on server side
   if (!isClient) {
     return (
-      <div className="w-full h-64 flex items-center justify-center bg-muted rounded-lg">
-        <div className="text-muted-foreground">Loading diagram...</div>
+      <div className="w-full h-64 flex items-center justify-center">
+        <div className="text-gray-500">Loading diagram...</div>
       </div>
     )
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <div className={`w-full h-full relative flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}`}>
-        {/* Top Controls Bar */}
-        <div className="p-2 border-b bg-background flex items-center justify-between space-x-2 flex-wrap">
-          <div className="flex items-center space-x-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleZoomIn}
-                  disabled={zoom >= 5}
-                  className={controlButtonClass}
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom In</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
+    <div className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}>
+      {/* Grid Background */}
+      {showGrid && (
+        <div
+          className="absolute inset-0 opacity-20 pointer-events-none"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: "20px 20px",
+            transform: `translate(${pan.x % 20}px, ${pan.y % 20}px) scale(${zoom})`,
+          }}
+        />
+      )}
+
+      {/* Responsive Control Panel */}
+      <div
+        className={`absolute ${
+          screenSize === "mobile" ? "top-2 right-2" : "top-4 right-4"
+        } z-20 transition-all duration-300 ${
+          showControls || controlsExpanded ? "opacity-100" : "opacity-0 hover:opacity-100"
+        }`}
+      >
+        <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl border border-gray-200/50 overflow-hidden">
+          {/* Compact Controls */}
+          {!controlsExpanded && (
+            <div className={`p-2 flex items-center gap-1 ${screenSize === "mobile" ? "flex-col" : ""}`}>
+              {/* Quick zoom controls */}
+              <div
+                className={`flex items-center gap-1 bg-gray-50 rounded-lg p-1 ${screenSize === "mobile" ? "w-full" : ""}`}
+              >
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
                   onClick={handleZoomOut}
                   disabled={zoom <= 0.1}
-                  className={controlButtonClass}
+                  title="Zoom out"
                 >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom Out</TooltipContent>
-            </Tooltip>
-            <div className="px-3 py-1.5 text-xs font-mono bg-muted rounded-md min-w-[60px] text-center border">
-              {Math.round(zoom * 100)}%
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleFitToScreen} className={controlButtonClass}>
-                  <Maximize className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Fit to Screen</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleResetView} className={controlButtonClass}>
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Reset View</TooltipContent>
-            </Tooltip>
-          </div>
+                  <ZoomOut className="h-3 w-3" />
+                </button>
 
-          <div className="flex items-center space-x-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setInteractionMode("pan")}
-                  className={`${controlButtonClass} ${interactionMode === "pan" ? activeControlButtonClass : ""}`}
-                >
-                  <Hand className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Pan Mode (Drag to move)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setInteractionMode("select")}
-                  className={`${controlButtonClass} ${interactionMode === "select" ? activeControlButtonClass : ""}`}
-                >
-                  <MousePointer2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Select Mode (Future feature)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowGrid(!showGrid)}
-                  className={`${controlButtonClass} ${showGrid ? activeControlButtonClass : ""}`}
-                >
-                  <Grid className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{showGrid ? "Hide" : "Show"} Grid</TooltipContent>
-            </Tooltip>
-          </div>
-
-          <div className="flex items-center space-x-1">
-            <select
-              value={theme}
-              onChange={(e) => handleThemeChange(e.target.value as Theme)}
-              className="px-2 py-1.5 text-xs border bg-background hover:bg-muted rounded-md focus:outline-none focus:ring-1 focus:ring-ring h-9"
-              aria-label="Select diagram theme"
-            >
-              {APP_CONFIG.AVAILABLE_MERMAID_THEMES.map((themeOption) => (
-                <option key={themeOption} value={themeOption}>
-                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                </option>
-              ))}
-            </select>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowCode(!showCode)}
-                  className={`${controlButtonClass} ${showCode ? activeControlButtonClass : ""}`}
-                >
-                  <Code className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{showCode ? "Hide" : "Show"} Mermaid Code</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleFullscreen} className={controlButtonClass}>
-                  <Maximize2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-
-        {/* Main Canvas Container */}
-        <div
-          ref={svgContainerRef}
-          className="flex-1 w-full h-full relative overflow-hidden bg-background"
-          style={{
-            cursor: interactionMode === "select" ? "crosshair" : isDragging ? "grabbing" : "grab",
-            touchAction: "none",
-          }}
-        >
-          {showGrid && (
-            <div
-              className="absolute inset-0 opacity-50 pointer-events-none"
-              style={{
-                backgroundImage: `
-                  linear-gradient(var(--border) 1px, transparent 1px),
-                  linear-gradient(90deg, var(--border) 1px, transparent 1px)
-                `,
-                backgroundSize: "20px 20px",
-                transform: `translate(${pan.x % 20}px, ${pan.y % 20}px) scale(${zoom})`, // Grid moves with pan/zoom
-              }}
-            />
-          )}
-          <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
-            {isRendering && (
-              <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                <RefreshCw className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-sm font-medium">Rendering diagram...</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Code View Modal */}
-        {showCode && (
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm z-30 p-4 flex flex-col"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="code-view-title"
-          >
-            <div className="bg-card p-4 rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden border">
-              <div className="flex justify-between items-center mb-3">
-                <h3 id="code-view-title" className="text-lg font-semibold">
-                  Mermaid Diagram Code
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowCode(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-              {wasFixed && (
-                <div className="mb-3 p-2 bg-yellow-100 dark:bg-yellow-900 border border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-200 rounded-md text-xs flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Syntax was automatically corrected or simplified.</span>
+                <div className="px-2 py-1 text-xs font-mono bg-white rounded min-w-[2.5rem] text-center">
+                  {Math.round(zoom * 100)}%
                 </div>
+
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 5}
+                  title="Zoom in"
+                >
+                  <ZoomIn className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* Interaction mode toggle */}
+              <button
+                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                  interactionMode === "select" ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100"
+                }`}
+                onClick={() => setInteractionMode(interactionMode === "pan" ? "select" : "pan")}
+                title={interactionMode === "pan" ? "Switch to select mode" : "Switch to pan mode"}
+              >
+                {interactionMode === "pan" ? <Hand className="h-3 w-3" /> : <MousePointer2 className="h-3 w-3" />}
+              </button>
+
+              {/* Fullscreen toggle */}
+              <button
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+                onClick={handleFullscreen}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              </button>
+
+              {/* Expand controls - hide on mobile when space is limited */}
+              {screenSize !== "mobile" && (
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+                  onClick={() => setControlsExpanded(true)}
+                  title="More controls"
+                >
+                  <Settings className="h-3 w-3" />
+                </button>
               )}
-              <pre className="text-sm font-mono bg-muted p-3 rounded-md overflow-auto flex-1 border text-muted-foreground">
-                <code>{sanitizedCode || chart}</code>
-              </pre>
-              <div className="mt-4 flex justify-end space-x-2">
-                <Button variant="outline" onClick={handleCopyCode}>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Code
-                </Button>
-                <Button variant="outline" onClick={() => handleDownload("svg")}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download SVG
-                </Button>
-                <Button variant="outline" onClick={() => handleDownload("png")}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PNG
-                </Button>
+            </div>
+          )}
+
+          {/* Expanded Controls */}
+          {controlsExpanded && (
+            <div className={screenSize === "mobile" ? "w-72" : "w-80"}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="font-semibold text-sm">Canvas Controls</h3>
+                <button
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
+                  onClick={() => setControlsExpanded(false)}
+                >
+                  <Minimize2 className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200">
+                {[
+                  { id: "zoom", label: "View", icon: Navigation },
+                  { id: "theme", label: "Theme", icon: Palette },
+                  { id: "export", label: "Export", icon: Download },
+                ].map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    className={`flex-1 flex items-center justify-center gap-2 p-3 text-xs font-medium transition-colors ${
+                      activeTab === id
+                        ? "bg-blue-50 text-blue-600 border-b-2 border-blue-600"
+                        : "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+                    }`}
+                    onClick={() => setActiveTab(id as any)}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab Content */}
+              <div className="p-4">
+                {activeTab === "zoom" && (
+                  <div className="space-y-4">
+                    {/* Zoom Controls */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Zoom Level</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
+                          onClick={handleZoomOut}
+                          disabled={zoom <= 0.1}
+                        >
+                          <ZoomOut className="h-3 w-3" />
+                        </button>
+
+                        <div className="flex-1 bg-gray-100 rounded-lg p-2 text-center">
+                          <span className="text-sm font-mono">{Math.round(zoom * 100)}%</span>
+                        </div>
+
+                        <button
+                          className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
+                          onClick={handleZoomIn}
+                          disabled={zoom >= 5}
+                        >
+                          <ZoomIn className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Interaction Mode */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Interaction Mode</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                            interactionMode === "pan" ? "bg-blue-50 border-blue-300 text-blue-700" : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => setInteractionMode("pan")}
+                        >
+                          <Hand className="h-3 w-3" />
+                          Pan
+                        </button>
+
+                        <button
+                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                            interactionMode === "select"
+                              ? "bg-blue-50 border-blue-300 text-blue-700"
+                              : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => setInteractionMode("select")}
+                        >
+                          <MousePointer2 className="h-3 w-3" />
+                          Select
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* View Controls */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                        onClick={handleFitToScreen}
+                      >
+                        <Maximize className="h-3 w-3" />
+                        Fit Screen
+                      </button>
+
+                      <button
+                        className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                        onClick={handleResetView}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Reset
+                      </button>
+                    </div>
+
+                    {/* Grid Toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-700">Show Grid</span>
+                      <button
+                        className={`w-10 h-6 rounded-full transition-colors ${
+                          showGrid ? "bg-blue-600" : "bg-gray-300"
+                        }`}
+                        onClick={() => setShowGrid(!showGrid)}
+                      >
+                        <div
+                          className={`w-4 h-4 bg-white rounded-full transition-transform ${
+                            showGrid ? "translate-x-5" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "theme" && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Diagram Theme</label>
+                      <select
+                        value={theme}
+                        onChange={handleThemeChange}
+                        className="w-full p-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isRendering}
+                      >
+                        {Available_Themes.map((themeOption) => (
+                          <option key={themeOption} value={themeOption}>
+                            {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Theme Preview */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {Available_Themes.map((themeOption) => (
+                        <button
+                          key={themeOption}
+                          className={`p-2 text-xs rounded-lg border transition-colors ${
+                            theme === themeOption
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          onClick={() => {
+                            const event = { target: { value: themeOption } } as any
+                            handleThemeChange(event)
+                          }}
+                        >
+                          {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "export" && (
+                  <div className="space-y-4">
+                    {/* Copy Options */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Copy</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                          onClick={handleCopyClick}
+                          disabled={isRendering}
+                        >
+                          <Copy className="h-3 w-3" />
+                          SVG
+                        </button>
+
+                        <button
+                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                          onClick={handleCodeCopy}
+                        >
+                          <Code className="h-3 w-3" />
+                          Code
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Download Options */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Download</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                          onClick={() => handleDownload("svg")}
+                          disabled={isRendering}
+                        >
+                          <Download className="h-3 w-3" />
+                          SVG
+                        </button>
+
+                        <button
+                          className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
+                          onClick={() => handleDownload("png")}
+                          disabled={isRendering}
+                        >
+                          <Download className="h-3 w-3" />
+                          PNG
+                        </button>
+                      </div>
+                    </div>
+                    {/* Code View Toggle */}
+                    <div>
+                      <button
+                        className={`w-full flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                          wasFixed
+                            ? "border-green-300 text-green-700 bg-green-50"
+                            : wasConverted
+                              ? "border-blue-300 text-blue-700 bg-blue-50"
+                              : "border-gray-300 hover:bg-gray-50"
+                        }`}
+                        onClick={() => setShowCode(!showCode)}
+                      >
+                        {wasFixed ? (
+                          <CheckCircle className="h-3 w-3" />
+                        ) : wasConverted ? (
+                          <RefreshCw className="h-3 w-3" />
+                        ) : (
+                          <Code className="h-3 w-3" />
+                        )}
+                        {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : wasConverted ? "Converted" : "Show Code"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      </div>
 
-        {/* Error Display */}
-        {error && !isRendering && !showCode && (
-          <div className="absolute bottom-4 left-4 right-4 bg-destructive/10 border border-destructive/30 text-destructive p-3 rounded-lg text-xs flex items-start gap-2 z-10 shadow-md">
-            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-medium">Diagram Error:</p>
-              <p>{error}</p>
-              <Button
-                variant="link"
-                size="sm"
-                className="text-destructive h-auto p-0 mt-1 text-xs"
-                onClick={() => setShowCode(true)}
+      {/* Interactive Instructions - Responsive */}
+      {!showControls && !isRendering && !error && !controlsExpanded && (
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "bottom-4 left-2 right-2" : "bottom-6 left-6"
+          } z-10 bg-black/80 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-xl opacity-60 hover:opacity-100 transition-all duration-300`}
+        >
+          <div className="flex items-center gap-3">
+            {interactionMode === "pan" ? <Hand className="h-4 w-4" /> : <MousePointer2 className="h-4 w-4" />}
+            <span className={screenSize === "mobile" ? "text-xs" : ""}>
+              {screenSize === "mobile"
+                ? "Pinch to zoom • Drag to pan"
+                : `${interactionMode === "pan" ? "Scroll to zoom • Drag to pan" : "Click to select • Drag elements"} • Hover for controls`}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Pan Indicator */}
+      {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && !isDragging && (
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "top-2 left-2" : "top-6 left-6"
+          } z-10 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg`}
+        >
+          <div className="flex items-center gap-2">
+            <Move className="h-3 w-3" />
+            <span>
+              Pan: {Math.round(pan.x)}, {Math.round(pan.y)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Code View */}
+      {showCode && (
+        <div className="absolute inset-0 bg-gray-900 text-gray-100 p-4 z-30 overflow-auto">
+          <div className={`flex ${screenSize === "mobile" ? "flex-col gap-4" : "justify-between items-center"} mb-6`}>
+            <div className="flex items-center gap-3">
+              <h3 className={`${screenSize === "mobile" ? "text-base" : "text-lg"} font-semibold`}>
+                Mermaid Diagram Code
+              </h3>
+              {wasFixed && (
+                <span className="px-3 py-1 bg-green-800 text-green-100 rounded-full text-xs font-medium">
+                  Automatically Fixed
+                </span>
+              )}
+              {wasConverted && (
+                <span className="px-3 py-1 bg-blue-800 text-blue-100 rounded-full text-xs font-medium">
+                  Converted from Old Syntax
+                </span>
+              )}
+            </div>
+            <div className={`flex gap-3 ${screenSize === "mobile" ? "w-full" : ""}`}>
+              <button
+                className={`flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors ${
+                  screenSize === "mobile" ? "flex-1 justify-center" : ""
+                }`}
+                onClick={handleCodeCopy}
               >
-                View Code
-              </Button>
+                <Copy className="h-4 w-4" />
+                Copy Code
+              </button>
+              <button
+                className={`flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors ${
+                  screenSize === "mobile" ? "flex-1 justify-center" : ""
+                }`}
+                onClick={() => setShowCode(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
-        )}
+
+          {(wasFixed || wasConverted) && (
+            <div
+              className={`mb-6 p-4 border rounded-lg ${
+                wasConverted ? "bg-blue-900 border-blue-700" : "bg-green-900 border-green-700"
+              }`}
+            >
+              <div className={`text-sm font-medium mb-3 ${wasConverted ? "text-blue-100" : "text-green-100"}`}>
+                {wasConverted ? "Old Flowchart Syntax Converted:" : "Syntax Issues Fixed:"}
+              </div>
+              <div className={`text-sm ${wasConverted ? "text-blue-200" : "text-green-200"}`}>
+                {wasConverted ? (
+                  <>
+                    • Converted old flowchart.js syntax to Mermaid format
+                    <br />• Transformed node definitions (start, operation, condition, end)
+                    <br />• Fixed connection syntax and arrow formats
+                  </>
+                ) : (
+                  <>
+                    • Fixed missing connections and syntax errors
+                    <br />• Ensured proper Mermaid syntax compliance
+                    <br />• Optimized for better rendering performance
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <pre
+            className={`text-sm font-mono bg-gray-800 p-4 rounded-lg overflow-auto border border-gray-700 ${
+              screenSize === "mobile" ? "text-xs" : ""
+            }`}
+          >
+            {sanitizedCode || chart}
+          </pre>
+        </div>
+      )}
+
+      {/* Main Canvas Container */}
+      <div
+        ref={svgContainerRef}
+        className={`w-full h-full relative overflow-hidden transition-colors duration-300 ${
+          showGrid ? "bg-gray-50" : "bg-white"
+        }`}
+        style={{
+          cursor:
+            interactionMode === "select" ? "crosshair" : zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
+          minHeight: "300px",
+          touchAction: "none", // Prevent default touch behaviors
+        }}
+        onMouseEnter={() => setShowControls(true)}
+        onMouseLeave={() => {
+          if (!isFullscreen && !isStandalone && !controlsExpanded && screenSize !== "mobile") {
+            setTimeout(() => setShowControls(false), 3000)
+          }
+        }}
+      >
+        <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
+          {isRendering && (
+            <div className="flex flex-col items-center gap-4 text-gray-500">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-medium`}>
+                Rendering diagram...
+              </span>
+              <div className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-gray-400`}>
+                This may take a moment for complex diagrams
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </TooltipProvider>
+
+      {/* Error Display */}
+      {error && !showCode && (
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "bottom-4 left-2 right-2" : "bottom-6 left-6 right-6"
+          } bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 z-10 shadow-lg`}
+        >
+          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-semibold text-red-800`}>
+              Diagram Rendering Error
+            </p>
+            <p className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-red-600 mt-1`}>{error}</p>
+            <button
+              className={`mt-2 ${screenSize === "mobile" ? "text-xs" : "text-xs"} text-red-700 hover:text-red-800 underline`}
+              onClick={() => setShowCode(true)}
+            >
+              View diagram code for debugging
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
+}
+
+// Helper function to create a simplified version of a diagram when rendering fails
+function createSimplifiedDiagram(originalCode: string): string {
+  const lines = originalCode
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const firstLine = lines[0].toLowerCase()
+
+  if (firstLine.startsWith("sequencediagram")) {
+    return `sequenceDiagram
+    participant A as User
+    participant B as System
+    A->>B: Request
+    B-->>A: Response`
+  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]`
+  } else if (firstLine.startsWith("journey")) {
+    return `journey
+    title User Journey
+    section Task
+      Step 1: 3: User
+      Step 2: 4: User`
+  } else {
+    return `graph TD
+    A[Simplified Diagram] --> B[Original syntax had errors]
+    B --> C[Please check the code and try again]
+    style A fill:#ffcccc
+    style B fill:#ffffcc
+    style C fill:#ccffcc`
+  }
 }
