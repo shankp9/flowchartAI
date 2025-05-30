@@ -21,7 +21,7 @@ export function parseCodeFromMessage(message: string): string {
   return match ? match[1].trim() : message.trim()
 }
 
-// Enhanced validation function with detailed error reporting
+// Enhanced validation function with more lenient error checking
 export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
@@ -60,21 +60,22 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     errors.push(`Invalid diagram type. Must start with one of: ${validStarts.join(", ")}`)
   }
 
-  // Diagram-specific validation
-  if (firstLine.startsWith("sequencediagram")) {
-    validateSequenceDiagram(lines.slice(1), errors)
-  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
-    validateFlowchart(lines.slice(1), errors)
-  } else if (firstLine.startsWith("classdiagram")) {
-    validateClassDiagram(lines.slice(1), errors)
-  } else if (firstLine.startsWith("erdiagram")) {
-    validateERDiagram(lines.slice(1), errors)
-  }
-
-  // Check for common error patterns
+  // More lenient error pattern checking - only flag obvious error messages
   const codeText = code.toLowerCase()
-  if (codeText.includes("error") || codeText.includes("identifying") || codeText.includes("parse error")) {
-    errors.push("Contains error keywords that will cause parsing failures")
+  const problematicPatterns = [
+    /syntax\s+error/i,
+    /parse\s+error/i,
+    /mermaid\s+error/i,
+    /error\s*:\s*error/i,
+    /^error$/im, // Only flag standalone "error" words
+    /identifying\s+error/i,
+  ]
+
+  for (const pattern of problematicPatterns) {
+    if (pattern.test(codeText)) {
+      errors.push("Contains error keywords that will cause parsing failures")
+      break
+    }
   }
 
   return { isValid: errors.length === 0, errors }
@@ -256,8 +257,8 @@ function ensureProperLineFormatting(code: string): string {
 
   // Fix node definitions that might be split across lines
   formatted = formatted.replace(/\[([^\]]*)\n([^\]]*)\]/g, "[$1 $2]")
-  formatted = formatted.replace(/\{([^}]*)\n([^}]*)\}/g, "{$1 $2]")
-  formatted = formatted.replace(/$$([^$$]*)\n([^)]*)\)/g, "($1 $2)")
+  formatted = formatted.replace(/\{([^}]*)\n([^}]*)\}/g, "{$1 $2}")
+  formatted = formatted.replace(/$$([^)]*)\n([^)]*)$$/g, "($1 $2)")
 
   return formatted
 }
@@ -294,7 +295,7 @@ function validateFinalSyntax(code: string): boolean {
     // Check for incomplete node definitions
     if (line.match(/\[[^\]]*$/)) return false // Unclosed bracket
     if (line.match(/\{[^}]*$/)) return false // Unclosed brace
-    if (line.match(/$$[^$$]*$/)) return false // Unclosed parenthesis
+    if (line.match(/\([^)]*$/)) return false // Unclosed parenthesis
 
     // Check for arrows without proper spacing
     if (line.match(/[a-zA-Z0-9]-->[a-zA-Z0-9]/)) return false
@@ -349,7 +350,7 @@ function fixERDiagramSyntax(code: string): string {
           .filter((attr) => attr.length > 0)
           .map((attr) => {
             // Clean attribute format
-            return attr.replace(/\s+/g, " ").replace(/[^\w\s$$$$]/g, "")
+            return attr.replace(/\s+/g, " ").replace(/[^\w\s()]/g, "")
           })
           .join("\n        ")
 
@@ -628,7 +629,7 @@ export function createFallbackDiagram(originalCode: string, errorMessage: string
     A[Start] --> B[Process]
     B --> C{Decision}
     C -->|Yes| D[Success]
-    C -->|No| E[Error]
+    C -->|No| E[Retry]
     D --> F[End]
     E --> F`
   } else if (firstLine.startsWith("journey")) {
@@ -668,7 +669,7 @@ export function createFallbackDiagram(originalCode: string, errorMessage: string
     Task 2 :2024-02-01, 20d`
   } else {
     return `graph TD
-    A[Original diagram had syntax errors] --> B[Showing simplified version]
+    A[Original diagram had syntax issues] --> B[Showing simplified version]
     B --> C[Please check your syntax]
     style A fill:#ffcccc
     style B fill:#ffffcc
@@ -759,24 +760,92 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
   })
 }
 
-// Placeholder functions for undeclared variables
-function createBasicFallbackDiagram(): string {
-  return `graph TD
-  A[Start] --> B[Process]
-  B --> C[End]`
-}
-
+// Helper functions
 function cleanInvalidSyntax(code: string): string {
-  // Placeholder implementation
-  return code
+  let cleaned = code
+
+  // Remove common error patterns more aggressively but preserve legitimate content
+  cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
+  cleaned = cleaned.replace(/\bERROR\b(?!\s*[:-])/gi, "") // Only remove standalone ERROR words
+  cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
+  cleaned = cleaned.replace(/\bSyntax error\b/gi, "")
+  cleaned = cleaned.replace(/\bmermaid version\b/gi, "")
+  cleaned = cleaned.replace(/\bparse error\b/gi, "")
+  cleaned = cleaned.replace(/\bunexpected token\b/gi, "")
+  cleaned = cleaned.replace(/\binvalid syntax\b/gi, "")
+
+  // Remove lines that contain only error keywords
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim().toLowerCase()
+      return !(
+        trimmed === "error" ||
+        trimmed === "syntax error" ||
+        trimmed === "parse error" ||
+        trimmed.startsWith("error:") ||
+        trimmed.includes("mermaid version") ||
+        trimmed.includes("unexpected token")
+      )
+    })
+    .join("\n")
+
+  // Fix malformed entity relationships
+  cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
+  cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
+
+  // Remove invalid characters but preserve essential ones
+  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]():;.,"'`~!@#$%^&*+=/\\?\n]/g, "")
+
+  // Fix broken lines and excessive whitespace
+  cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
+  cleaned = cleaned.replace(/\s+/g, " ")
+  cleaned = cleaned.replace(/\n\s+/g, "\n")
+
+  // Ensure proper line endings
+  cleaned = cleaned.replace(/\r\n/g, "\n")
+  cleaned = cleaned.replace(/\r/g, "\n")
+
+  return cleaned
 }
 
 function isValidMermaidStart(code: string): boolean {
-  // Placeholder implementation
-  return true
+  const firstLine = code.split("\n")[0].trim().toLowerCase()
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+    "gitgraph",
+    "mindmap",
+    "timeline",
+    "sankey",
+    "requirement",
+    "c4context",
+    "c4container",
+    "c4component",
+    "c4dynamic",
+  ]
+  return validStarts.some((start) => firstLine.startsWith(start))
 }
 
 function containsErrorPatterns(code: string): boolean {
-  // Placeholder implementation
-  return false
+  // More specific error patterns that are actually problematic
+  const errorPatterns = [
+    /syntax\s+error/i,
+    /mermaid\s+version/i,
+    /parse\s+error/i,
+    /unexpected\s+token/i,
+    /invalid\s+syntax/i,
+    /error\s*:\s*error/i,
+    /^error$/im, // Only standalone error words
+    /identifying\s+error/i,
+  ]
+
+  return errorPatterns.some((pattern) => pattern.test(code))
 }

@@ -53,21 +53,20 @@ Respond ONLY with valid JSON in this exact format:
         retryAttempt > 0
           ? `
 
-CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
-- This is a retry attempt due to previous syntax errors
-- Previous errors: ${previousErrors.join("; ")}
-- Use ONLY the most basic, validated Mermaid syntax
-- Avoid complex features that might cause parsing errors
-- Start directly with diagram type keyword
-- Use simple node names without special characters
-- Ensure all arrows and connections are properly formatted
-- Double-check every line for syntax correctness
-- NO explanatory text, ONLY valid Mermaid code
-- NEVER include words like "error", "syntax", "mermaid version", or "parse"
+RETRY ATTEMPT ${retryAttempt + 1}/3 - PREVIOUS ERRORS DETECTED:
+${previousErrors.map((err) => `- ${err}`).join("\n")}
 
-RETRY FOCUS:
-${retryAttempt === 1 ? "- Simplify syntax and use basic examples" : ""}
-${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
+CRITICAL FIXES NEEDED:
+- Use ONLY basic Mermaid syntax patterns
+- Ensure every arrow has proper spacing: "A --> B"
+- Put each connection on its own line
+- Use simple alphanumeric node IDs only
+- Double-check line formatting and indentation
+- NO complex features that might cause parsing errors
+
+SIMPLIFIED APPROACH:
+${retryAttempt === 1 ? "- Use minimal syntax with proven patterns" : ""}
+${retryAttempt === 2 ? "- Generate the simplest possible valid diagram" : ""}
 `
           : ""
 
@@ -95,51 +94,63 @@ MODIFICATION RULES:
 
       systemMessage = {
         role: "system",
-        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
+        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid, properly formatted Mermaid syntax code that renders without errors.
 
-CRITICAL RULES:
-1. NEVER include explanatory text before or after the diagram code
-2. ALWAYS start your response directly with the diagram type keyword
-3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
-4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
-5. NEVER start a line with just an arrow (-->> or ->>)
-6. NEVER use words like "ERROR", "IDENTIFYING", "syntax error", "mermaid version", or other invalid keywords
-7. ALWAYS use proper Mermaid syntax for each diagram type
-8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation
-10. NEVER include any error messages or debugging information${retryInstructions}${contextInstructions}
+CRITICAL FORMATTING RULES:
+1. ALWAYS start directly with the diagram type (graph TD, sequenceDiagram, etc.)
+2. NEVER include explanatory text before or after the code
+3. Use proper line breaks - each element on its own line
+4. Ensure proper spacing around arrows: "A --> B" (spaces around arrows)
+5. Use consistent indentation (4 spaces for content)
 
-SEQUENCE DIAGRAM SYNTAX RULES:
-- CORRECT: "ParticipantA ->> ParticipantB: Message"
-- CORRECT: "ParticipantA -->> ParticipantB: Response"
-- INCORRECT: "->> ParticipantB: Message" (missing sender)
-- INCORRECT: "-->> ParticipantB: Response" (missing sender)
+FLOWCHART RULES:
+- Start with: graph TD or graph LR
+- Node format: A[Label], B{Decision}, C((Circle)), D(Rounded)
+- Connection format: A --> B (always with spaces)
+- Each connection on separate line with 4-space indent
 
-FLOWCHART SYNTAX RULES:
-- CORRECT: "A[Start] --> B[Process] --> C[End]"
-- INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
+SEQUENCE DIAGRAM RULES:
+- Start with: sequenceDiagram
+- Participant format: participant A as Name
+- Arrow format: A->>B: Message (no spaces around arrows)
+- Response format: B-->>A: Response
 
-ER DIAGRAM SYNTAX RULES:
-- CORRECT: "CUSTOMER ||--o{ ORDER : places"
-- CORRECT: "USER { int id PK }"
-- INCORRECT: "USER ERROR -- ERROR_TYPE : Below"
+CLASS DIAGRAM RULES:
+- Start with: classDiagram
+- Class format: class ClassName { +method() }
+- Relationship format: ClassA --> ClassB
 
-CLASS DIAGRAM SYNTAX RULES:
-- CORRECT: "class User { +String name +login() }"
-- CORRECT: "User --> System"
-- INCORRECT: "class User ERROR IDENTIFYING"
+EXAMPLE VALID FLOWCHART:
+graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Success]
+    C -->|No| E[Error]
+    D --> F[End]
+    E --> F
 
-VALID DIAGRAM TYPES:
-- graph TD / graph LR (flowchart)
-- sequenceDiagram
-- classDiagram
-- journey
-- gantt
-- stateDiagram-v2
-- erDiagram
-- pie
+EXAMPLE VALID SEQUENCE:
+sequenceDiagram
+    participant U as User
+    participant S as System
+    U->>S: Request
+    S-->>U: Response
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
+FORBIDDEN PATTERNS:
+- Never use: ERROR, IDENTIFYING, syntax error, parse error
+- Never start lines with just arrows: -->> or ->>
+- Never concatenate nodes without arrows: A B C
+- Never use special characters in node IDs
+- Never include markdown code blocks (\`\`\`)
+
+RESPONSE FORMAT:
+- Start immediately with diagram type
+- No explanations or comments
+- Each line properly formatted
+- Proper indentation throughout
+- End cleanly without extra text
+
+Generate ONLY the Mermaid code that will render perfectly without any syntax errors.${retryInstructions}${contextInstructions}`,
       }
     }
 

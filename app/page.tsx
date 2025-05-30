@@ -19,7 +19,7 @@ import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
-import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
+import { parseCodeFromMessage } from "@/lib/utils"
 
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
@@ -161,7 +161,7 @@ export default function Home() {
             const summary = parsed.summary || "Diagram generated successfully"
             const suggestions = parsed.suggestions || [
               "Add more detail to the process steps",
-              "Include error handling paths",
+              "Include alternative paths",
               "Add decision points for better flow control",
             ]
 
@@ -246,15 +246,12 @@ export default function Home() {
 
         // Parse and sanitize the code
         const parsedCode = parseCodeFromMessage(code)
-        const sanitizedCode = sanitizeMermaidCode(parsedCode)
 
-        // Validate the generated code
-        const validationResult = validateMermaidCode(sanitizedCode)
-
-        if (validationResult.isValid && sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
-          return { success: true, code: sanitizedCode }
+        // More lenient validation - only check for basic structure
+        if (parsedCode && parsedCode.length > 10 && isBasicValidMermaid(parsedCode)) {
+          return { success: true, code: parsedCode }
         } else {
-          const errorMessage = validationResult.errors.join("; ") || "Invalid diagram syntax generated"
+          const errorMessage = "Invalid diagram structure generated"
 
           // If we haven't reached max retries, try again
           if (attemptNumber < maxRetries - 1) {
@@ -307,6 +304,29 @@ export default function Home() {
     },
     [outputCode],
   )
+
+  // Simple validation function that's more lenient
+  const isBasicValidMermaid = (code: string): boolean => {
+    if (!code || typeof code !== "string") return false
+
+    const trimmed = code.trim()
+    if (trimmed.length < 10) return false
+
+    const firstLine = trimmed.split("\n")[0].toLowerCase()
+    const validStarts = [
+      "graph",
+      "flowchart",
+      "sequencediagram",
+      "classdiagram",
+      "journey",
+      "gantt",
+      "statediagram",
+      "erdiagram",
+      "pie",
+    ]
+
+    return validStarts.some((start) => firstLine.startsWith(start))
+  }
 
   const handleSubmit = useCallback(async () => {
     if (!draftMessage.trim()) {
@@ -609,7 +629,7 @@ export default function Home() {
                   Auto-Retry
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                  Error Correction
+                  Smart Validation
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
                   Valid Syntax
