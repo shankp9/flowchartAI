@@ -22,6 +22,7 @@ import {
   Hand,
   Navigation,
   Settings,
+  Move,
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
@@ -48,7 +49,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [wasFixed, setWasFixed] = useState(false)
   const [wasConverted, setWasConverted] = useState(false)
 
-  // Enhanced zoom and pan state
+  // Enhanced zoom and pan state with better control
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -57,11 +58,19 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [showGrid, setShowGrid] = useState(false)
   const [autoFit, setAutoFit] = useState(true)
 
+  // Enhanced interaction state
+  const [isElementDragging, setIsElementDragging] = useState(false)
+  const [selectedElement, setSelectedElement] = useState<Element | null>(null)
+  const [interactionMode, setInteractionMode] = useState<"pan" | "select">("pan")
+
   // Control panel state
   const [controlsExpanded, setControlsExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState<"zoom" | "theme" | "export">("zoom")
 
-  // Initialize client-side state
+  // Responsive breakpoints
+  const [screenSize, setScreenSize] = useState<"mobile" | "tablet" | "desktop">("desktop")
+
+  // Initialize client-side state and responsive handling
   useEffect(() => {
     setIsClient(true)
     const savedTheme = localStorage.getItem("mermaid-theme")
@@ -69,7 +78,23 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       setTheme(savedTheme as Theme)
     }
 
-    // Initialize mermaid with global settings
+    // Handle responsive breakpoints
+    const handleResize = () => {
+      const width = window.innerWidth
+      if (width < 768) {
+        setScreenSize("mobile")
+        setControlsExpanded(false)
+      } else if (width < 1024) {
+        setScreenSize("tablet")
+      } else {
+        setScreenSize("desktop")
+      }
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+
+    // Initialize mermaid with responsive settings
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "loose",
@@ -87,37 +112,48 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         useMaxWidth: false,
         showSequenceNumbers: true,
         wrap: true,
-        width: 150,
+        width: screenSize === "mobile" ? 120 : 150,
       },
       gantt: {
         useMaxWidth: false,
       },
     })
 
-    // Auto-hide controls after 4 seconds of no interaction
+    // Auto-hide controls on mobile after interaction
     const timer = setTimeout(() => {
-      if (!isFullscreen && !isStandalone) setShowControls(false)
-    }, 4000)
+      if (screenSize === "mobile" && !isFullscreen && !isStandalone) {
+        setShowControls(false)
+      }
+    }, 3000)
 
-    return () => clearTimeout(timer)
-  }, [isFullscreen, isStandalone])
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener("resize", handleResize)
+    }
+  }, [isFullscreen, isStandalone, screenSize])
 
-  // Enhanced mouse interactions for zoom and pan
+  // Enhanced mouse and touch interactions with better zoom control
   useEffect(() => {
     const container = svgContainerRef.current
     if (!container) return
 
+    let lastTouchDistance = 0
+    let lastTouchCenter = { x: 0, y: 0 }
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
+
+      // More controlled zoom with smaller increments
+      const zoomSensitivity = screenSize === "mobile" ? 0.05 : 0.1
+      const delta = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity
 
       // Get mouse position relative to container
       const rect = container.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      // Calculate zoom
-      const delta = e.deltaY > 0 ? 0.9 : 1.1
-      const newZoom = Math.max(0.1, Math.min(10, zoom * delta))
+      // Calculate new zoom with limits
+      const newZoom = Math.max(0.1, Math.min(5, zoom + delta))
 
       // Calculate new pan to zoom towards mouse position
       const zoomRatio = newZoom / zoom
@@ -131,8 +167,20 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
-        // Left click
+      const target = e.target as Element
+
+      // Check if clicking on a diagram element
+      if (target.closest("g[class*='node'], g[class*='edgePath'], g[class*='actor'], g[class*='rect']")) {
+        if (interactionMode === "select") {
+          setSelectedElement(target.closest("g") as Element)
+          setIsElementDragging(true)
+          e.stopPropagation()
+          return
+        }
+      }
+
+      // Pan mode or no element selected
+      if (e.button === 0 && interactionMode === "pan") {
         setIsDragging(true)
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
         container.style.cursor = "grabbing"
@@ -141,49 +189,114 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
+      if (isDragging && interactionMode === "pan") {
         setPan({
           x: e.clientX - dragStart.x,
           y: e.clientY - dragStart.y,
         })
+      } else if (isElementDragging && selectedElement) {
+        // Handle element dragging (visual feedback only for now)
+        const rect = container.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+
+        // Add visual feedback for element selection
+        selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
       }
       setShowControls(true)
     }
 
     const handleMouseUp = () => {
       setIsDragging(false)
-      container.style.cursor = zoom > 1 ? "grab" : "default"
+      setIsElementDragging(false)
+      container.style.cursor = interactionMode === "pan" ? (zoom > 1 ? "grab" : "default") : "crosshair"
+
+      if (selectedElement) {
+        selectedElement.style.filter = ""
+      }
     }
 
     const handleMouseLeave = () => {
       setIsDragging(false)
+      setIsElementDragging(false)
       container.style.cursor = "default"
+
+      if (selectedElement) {
+        selectedElement.style.filter = ""
+      }
     }
 
-    // Touch events for mobile
+    // Enhanced touch events for mobile
     const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault()
+
       if (e.touches.length === 1) {
         const touch = e.touches[0]
         setIsDragging(true)
         setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+      } else if (e.touches.length === 2) {
+        // Pinch zoom setup
+        const touch1 = e.touches[0]
+        const touch2 = e.touches[1]
+        lastTouchDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+        lastTouchCenter = {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2,
+        }
       }
     }
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault()
+
       if (e.touches.length === 1 && isDragging) {
         const touch = e.touches[0]
         setPan({
           x: touch.clientX - dragStart.x,
-          y: touch.clientY - pan.y,
+          y: touch.clientY - dragStart.y,
         })
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        const touch1 = e.touches[0]
+        const touch2 = e.touches[1]
+        const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+
+        if (lastTouchDistance > 0) {
+          const scale = distance / lastTouchDistance
+          const newZoom = Math.max(0.1, Math.min(5, zoom * scale))
+
+          const center = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2,
+          }
+
+          const rect = container.getBoundingClientRect()
+          const centerX = center.x - rect.left
+          const centerY = center.y - rect.top
+
+          const zoomRatio = newZoom / zoom
+          const newPanX = centerX - (centerX - pan.x) * zoomRatio
+          const newPanY = centerY - (centerY - pan.y) * zoomRatio
+
+          setZoom(newZoom)
+          setPan({ x: newPanX, y: newPanY })
+        }
+
+        lastTouchDistance = distance
+        lastTouchCenter = {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2,
+        }
       }
     }
 
     const handleTouchEnd = () => {
       setIsDragging(false)
+      setIsElementDragging(false)
+      lastTouchDistance = 0
     }
 
+    // Add event listeners with proper options
     container.addEventListener("wheel", handleWheel, { passive: false })
     container.addEventListener("mousedown", handleMouseDown)
     container.addEventListener("mousemove", handleMouseMove)
@@ -203,7 +316,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       container.removeEventListener("touchmove", handleTouchMove)
       container.removeEventListener("touchend", handleTouchEnd)
     }
-  }, [zoom, pan, isDragging, dragStart])
+  }, [zoom, pan, isDragging, dragStart, interactionMode, isElementDragging, selectedElement, screenSize])
 
   const copyToClipboard = useCallback((text: string) => {
     if (navigator.clipboard) {
@@ -238,7 +351,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       }
     } catch (e) {
       console.error("Error copying SVG:", e)
-      // Fallback to code copy
       if (sanitizedCode) {
         copyToClipboard(sanitizedCode)
         setLabel("Copied code!")
@@ -273,11 +385,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
       } else {
-        // Convert SVG to PNG
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
         const img = new Image()
 
+        img.crossOrigin = "anonymous"
         img.onload = () => {
           canvas.width = img.width
           canvas.height = img.height
@@ -305,17 +417,20 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
   }, [])
 
+  // Enhanced zoom controls with better increments
   const handleZoomIn = useCallback(() => {
-    setZoom((prev) => Math.min(10, prev * 1.3))
+    const increment = screenSize === "mobile" ? 0.15 : 0.2
+    setZoom((prev) => Math.min(5, prev + increment))
     setShowControls(true)
     setAutoFit(false)
-  }, [])
+  }, [screenSize])
 
   const handleZoomOut = useCallback(() => {
-    setZoom((prev) => Math.max(0.1, prev / 1.3))
+    const increment = screenSize === "mobile" ? 0.15 : 0.2
+    setZoom((prev) => Math.max(0.1, prev - increment))
     setShowControls(true)
     setAutoFit(false)
-  }, [])
+  }, [screenSize])
 
   const handleFitToScreen = useCallback(() => {
     const container = svgContainerRef.current
@@ -325,16 +440,17 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       const containerRect = container.getBoundingClientRect()
       const svgRect = svgWrapper.getBoundingClientRect()
 
-      const scaleX = (containerRect.width * 0.9) / svgRect.width
-      const scaleY = (containerRect.height * 0.9) / svgRect.height
-      const newZoom = Math.min(scaleX, scaleY, 2) // Max zoom of 2x for fit
+      const padding = screenSize === "mobile" ? 0.8 : 0.9
+      const scaleX = (containerRect.width * padding) / svgRect.width
+      const scaleY = (containerRect.height * padding) / svgRect.height
+      const newZoom = Math.min(scaleX, scaleY, 3)
 
       setZoom(newZoom)
       setPan({ x: 0, y: 0 })
       setAutoFit(true)
       setShowControls(true)
     }
-  }, [])
+  }, [screenSize])
 
   const handleResetView = useCallback(() => {
     setZoom(1)
@@ -366,7 +482,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             container.removeChild(container.firstChild)
           } catch (e) {
             console.warn("Error removing child:", e)
-            // Break the loop if we encounter an error
             container.innerHTML = ""
             break
           }
@@ -374,16 +489,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
         container.removeAttribute("data-processed")
 
-        // Check if this is old flowchart syntax
         const isOldSyntax =
           chartCode.includes("=>") &&
           (chartCode.includes("start:") || chartCode.includes("operation:") || chartCode.includes("condition:"))
 
-        // Sanitize and fix common syntax errors
         const cleanedCode = sanitizeMermaidCode(chartCode)
         setSanitizedCode(cleanedCode)
 
-        // Check if the code was modified during sanitization
         const codeWasFixed = cleanedCode !== chartCode.trim()
         setWasFixed(codeWasFixed && !isOldSyntax)
         setWasConverted(isOldSyntax)
@@ -393,7 +505,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         }
 
         try {
-          // Initialize mermaid with current theme
+          // Initialize mermaid with responsive settings
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: "loose",
@@ -403,6 +515,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               useMaxWidth: false,
               htmlLabels: true,
               curve: "basis",
+              padding: screenSize === "mobile" ? 10 : 20,
             },
             journey: {
               useMaxWidth: false,
@@ -411,17 +524,15 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               useMaxWidth: false,
               showSequenceNumbers: true,
               wrap: true,
-              width: 150,
+              width: screenSize === "mobile" ? 120 : 150,
             },
             gantt: {
               useMaxWidth: false,
             },
           })
 
-          // Generate unique ID for this render
           const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-          // Render the chart
           let svg: string
           try {
             const result = await mermaid.render(id, cleanedCode)
@@ -434,7 +545,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             setWasFixed(true)
           }
 
-          // Create a wrapper div for the SVG with zoom and pan
           const wrapper = document.createElement("div")
           wrapper.innerHTML = svg
           wrapper.style.transformOrigin = "center center"
@@ -445,14 +555,36 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           wrapper.style.top = "50%"
           wrapper.style.left = "50%"
 
+          // Add interaction classes for better element selection
+          const svgElement = wrapper.querySelector("svg")
+          if (svgElement) {
+            svgElement.style.userSelect = "none"
+            svgElement.style.pointerEvents = "auto"
+
+            // Add hover effects for interactive elements
+            const nodes = svgElement.querySelectorAll("g[class*='node'], g[class*='actor']")
+            nodes.forEach((node) => {
+              const element = node as HTMLElement
+              element.style.cursor = interactionMode === "select" ? "pointer" : "inherit"
+              element.addEventListener("mouseenter", () => {
+                if (interactionMode === "select") {
+                  element.style.filter = "brightness(1.1)"
+                }
+              })
+              element.addEventListener("mouseleave", () => {
+                if (element !== selectedElement) {
+                  element.style.filter = ""
+                }
+              })
+            })
+          }
+
           try {
-            // Only append if container exists and doesn't already have this element
             if (container && !container.contains(wrapper)) {
               container.appendChild(wrapper)
             }
           } catch (e) {
             console.error("Error appending wrapper:", e)
-            // Fallback: clear and try again
             try {
               container.innerHTML = ""
               container.appendChild(wrapper)
@@ -461,12 +593,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             }
           }
 
-          // Auto-fit on first render if enabled
           if (autoFit) {
             setTimeout(() => handleFitToScreen(), 100)
           }
 
-          // Show success message if code was fixed or converted
           if (codeWasFixed || isOldSyntax || wasFixed) {
             const successDiv = document.createElement("div")
             let messageText = "Syntax automatically fixed"
@@ -480,18 +610,17 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               bgColor = "bg-yellow-50 border-yellow-200 text-yellow-700"
             }
 
-            successDiv.className = `absolute top-4 left-4 ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
+            const position = screenSize === "mobile" ? "top-2 left-2 right-2" : "top-4 left-4"
+            successDiv.className = `absolute ${position} ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
             successDiv.innerHTML = `
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
               </svg>
-              <span>${messageText}</span>
+              <span class="flex-1">${messageText}</span>
             `
 
             try {
               container.appendChild(successDiv)
-
-              // Auto-hide the success message after 5 seconds
               setTimeout(() => {
                 try {
                   if (successDiv.parentNode === container) {
@@ -501,7 +630,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                   }
                 } catch (e) {
                   console.warn("Error removing success message:", e)
-                  // Try the safer approach if direct removal fails
                   if (container.contains(successDiv)) {
                     container.innerHTML = container.innerHTML
                   }
@@ -516,16 +644,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
           setError(errorMessage)
 
-          // Display enhanced error message in container
           const errorDiv = document.createElement("div")
-          errorDiv.className = "text-red-500 p-8 text-center max-w-lg mx-auto"
+          errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
 
           let errorContent = `
-            <div class="font-semibold mb-4 text-xl">Diagram Rendering Error</div>
+            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
             <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
           `
 
-          // Provide specific help based on error type
           if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
             errorContent += `
               <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
@@ -538,12 +664,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             `
           }
 
+          const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"
           errorContent += `
-            <div class="space-y-3">
-              <button class="px-6 py-3 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
+            <div class="flex ${buttonLayout}">
+              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
                 Show Diagram Code
               </button>
-              <button class="px-6 py-3 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium ml-3" id="retry-simplified-btn">
+              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
                 Try Simplified Version
               </button>
             </div>
@@ -552,14 +679,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           errorDiv.innerHTML = errorContent
 
           try {
-            // Clear container first to avoid DOM conflicts
             container.innerHTML = ""
             container.appendChild(errorDiv)
           } catch (e) {
             console.warn("Error adding error message:", e)
           }
 
-          // Add event listeners to the buttons
           setTimeout(() => {
             const showCodeBtn = document.getElementById("show-code-btn")
             const retryBtn = document.getElementById("retry-simplified-btn")
@@ -587,7 +712,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setIsRendering(false)
       }
     },
-    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed],
+    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
   )
 
   // Update transform when zoom or pan changes
@@ -601,9 +726,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
     }
 
-    // Return cleanup function
     return () => {
-      // Nothing specific to clean up here, but this pattern helps React track dependencies properly
+      // Cleanup function
     }
   }, [zoom, pan, isDragging])
 
@@ -613,7 +737,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       renderChart(chart, theme)
     }
 
-    // Cleanup function to prevent memory leaks and DOM issues
     return () => {
       const container = containerRef.current
       if (container) {
@@ -666,20 +789,24 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         />
       )}
 
-      {/* Enhanced Professional Control Panel */}
+      {/* Responsive Control Panel */}
       <div
-        className={`absolute top-4 right-4 z-20 transition-all duration-300 ${
+        className={`absolute ${
+          screenSize === "mobile" ? "top-2 right-2" : "top-4 right-4"
+        } z-20 transition-all duration-300 ${
           showControls || controlsExpanded ? "opacity-100" : "opacity-0 hover:opacity-100"
         }`}
       >
         <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl border border-gray-200/50 overflow-hidden">
           {/* Compact Controls */}
           {!controlsExpanded && (
-            <div className="p-3 flex items-center gap-2">
+            <div className={`p-2 flex items-center gap-1 ${screenSize === "mobile" ? "flex-col" : ""}`}>
               {/* Quick zoom controls */}
-              <div className="flex items-center gap-1 bg-gray-50 rounded-lg p-1">
+              <div
+                className={`flex items-center gap-1 bg-gray-50 rounded-lg p-1 ${screenSize === "mobile" ? "w-full" : ""}`}
+              >
                 <button
-                  className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
+                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
                   onClick={handleZoomOut}
                   disabled={zoom <= 0.1}
                   title="Zoom out"
@@ -687,43 +814,56 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                   <ZoomOut className="h-3 w-3" />
                 </button>
 
-                <div className="px-2 py-1 text-xs font-mono bg-white rounded min-w-[3rem] text-center">
+                <div className="px-2 py-1 text-xs font-mono bg-white rounded min-w-[2.5rem] text-center">
                   {Math.round(zoom * 100)}%
                 </div>
 
                 <button
-                  className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
+                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
                   onClick={handleZoomIn}
-                  disabled={zoom >= 10}
+                  disabled={zoom >= 5}
                   title="Zoom in"
                 >
                   <ZoomIn className="h-3 w-3" />
                 </button>
               </div>
 
+              {/* Interaction mode toggle */}
+              <button
+                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                  interactionMode === "select" ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100"
+                }`}
+                onClick={() => setInteractionMode(interactionMode === "pan" ? "select" : "pan")}
+                title={interactionMode === "pan" ? "Switch to select mode" : "Switch to pan mode"}
+              >
+                {interactionMode === "pan" ? <Hand className="h-3 w-3" /> : <MousePointer2 className="h-3 w-3" />}
+              </button>
+
               {/* Fullscreen toggle */}
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
                 onClick={handleFullscreen}
                 title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
               >
                 {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
               </button>
 
-              {/* Expand controls */}
-              <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-                onClick={() => setControlsExpanded(true)}
-                title="More controls"
-              >
-                <Settings className="h-3 w-3" />
-              </button>
+              {/* Expand controls - hide on mobile when space is limited */}
+              {screenSize !== "mobile" && (
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+                  onClick={() => setControlsExpanded(true)}
+                  title="More controls"
+                >
+                  <Settings className="h-3 w-3" />
+                </button>
+              )}
             </div>
           )}
 
           {/* Expanded Controls */}
           {controlsExpanded && (
-            <div className="w-80">
+            <div className={screenSize === "mobile" ? "w-72" : "w-80"}>
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
                 <h3 className="font-semibold text-sm">Canvas Controls</h3>
@@ -780,9 +920,37 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                         <button
                           className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
                           onClick={handleZoomIn}
-                          disabled={zoom >= 10}
+                          disabled={zoom >= 5}
                         >
                           <ZoomIn className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Interaction Mode */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-2">Interaction Mode</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                            interactionMode === "pan" ? "bg-blue-50 border-blue-300 text-blue-700" : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => setInteractionMode("pan")}
+                        >
+                          <Hand className="h-3 w-3" />
+                          Pan
+                        </button>
+
+                        <button
+                          className={`flex items-center justify-center gap-2 p-2 text-xs border rounded-lg transition-colors ${
+                            interactionMode === "select"
+                              ? "bg-blue-50 border-blue-300 text-blue-700"
+                              : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => setInteractionMode("select")}
+                        >
+                          <MousePointer2 className="h-3 w-3" />
+                          Select
                         </button>
                       </div>
                     </div>
@@ -943,21 +1111,33 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         </div>
       </div>
 
-      {/* Interactive Instructions */}
+      {/* Interactive Instructions - Responsive */}
       {!showControls && !isRendering && !error && !controlsExpanded && (
-        <div className="absolute bottom-6 left-6 z-10 bg-black/80 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-xl opacity-60 hover:opacity-100 transition-all duration-300">
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "bottom-4 left-2 right-2" : "bottom-6 left-6"
+          } z-10 bg-black/80 backdrop-blur-sm text-white text-sm px-4 py-3 rounded-xl opacity-60 hover:opacity-100 transition-all duration-300`}
+        >
           <div className="flex items-center gap-3">
-            <MousePointer2 className="h-4 w-4" />
-            <span>Scroll to zoom • Drag to pan • Hover for controls</span>
+            {interactionMode === "pan" ? <Hand className="h-4 w-4" /> : <MousePointer2 className="h-4 w-4" />}
+            <span className={screenSize === "mobile" ? "text-xs" : ""}>
+              {screenSize === "mobile"
+                ? "Pinch to zoom • Drag to pan"
+                : `${interactionMode === "pan" ? "Scroll to zoom • Drag to pan" : "Click to select • Drag elements"} • Hover for controls`}
+            </span>
           </div>
         </div>
       )}
 
       {/* Pan Indicator */}
       {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && !isDragging && (
-        <div className="absolute top-6 left-6 z-10 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg">
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "top-2 left-2" : "top-6 left-6"
+          } z-10 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg`}
+        >
           <div className="flex items-center gap-2">
-            <Hand className="h-3 w-3" />
+            <Move className="h-3 w-3" />
             <span>
               Pan: {Math.round(pan.x)}, {Math.round(pan.y)}
             </span>
@@ -967,10 +1147,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
       {/* Code View */}
       {showCode && (
-        <div className="absolute inset-0 bg-gray-900 text-gray-100 p-6 z-30 overflow-auto">
-          <div className="flex justify-between items-center mb-6">
+        <div className="absolute inset-0 bg-gray-900 text-gray-100 p-4 z-30 overflow-auto">
+          <div className={`flex ${screenSize === "mobile" ? "flex-col gap-4" : "justify-between items-center"} mb-6`}>
             <div className="flex items-center gap-3">
-              <h3 className="text-lg font-semibold">Mermaid Diagram Code</h3>
+              <h3 className={`${screenSize === "mobile" ? "text-base" : "text-lg"} font-semibold`}>
+                Mermaid Diagram Code
+              </h3>
               {wasFixed && (
                 <span className="px-3 py-1 bg-green-800 text-green-100 rounded-full text-xs font-medium">
                   Automatically Fixed
@@ -982,16 +1164,20 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 </span>
               )}
             </div>
-            <div className="flex gap-3">
+            <div className={`flex gap-3 ${screenSize === "mobile" ? "w-full" : ""}`}>
               <button
-                className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                className={`flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors ${
+                  screenSize === "mobile" ? "flex-1 justify-center" : ""
+                }`}
                 onClick={handleCodeCopy}
               >
                 <Copy className="h-4 w-4" />
                 Copy Code
               </button>
               <button
-                className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                className={`flex items-center gap-2 px-4 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors ${
+                  screenSize === "mobile" ? "flex-1 justify-center" : ""
+                }`}
                 onClick={() => setShowCode(false)}
               >
                 Close
@@ -1026,7 +1212,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             </div>
           )}
 
-          <pre className="text-sm font-mono bg-gray-800 p-6 rounded-lg overflow-auto border border-gray-700">
+          <pre
+            className={`text-sm font-mono bg-gray-800 p-4 rounded-lg overflow-auto border border-gray-700 ${
+              screenSize === "mobile" ? "text-xs" : ""
+            }`}
+          >
             {sanitizedCode || chart}
           </pre>
         </div>
@@ -1039,12 +1229,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           showGrid ? "bg-gray-50" : "bg-white"
         }`}
         style={{
-          cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
+          cursor:
+            interactionMode === "select" ? "crosshair" : zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
           minHeight: "300px",
+          touchAction: "none", // Prevent default touch behaviors
         }}
         onMouseEnter={() => setShowControls(true)}
         onMouseLeave={() => {
-          if (!isFullscreen && !isStandalone && !controlsExpanded) {
+          if (!isFullscreen && !isStandalone && !controlsExpanded && screenSize !== "mobile") {
             setTimeout(() => setShowControls(false), 3000)
           }
         }}
@@ -1053,8 +1245,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           {isRendering && (
             <div className="flex flex-col items-center gap-4 text-gray-500">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="text-sm font-medium">Rendering diagram...</span>
-              <div className="text-xs text-gray-400">This may take a moment for complex diagrams</div>
+              <span className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-medium`}>
+                Rendering diagram...
+              </span>
+              <div className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-gray-400`}>
+                This may take a moment for complex diagrams
+              </div>
             </div>
           )}
         </div>
@@ -1062,13 +1258,19 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
       {/* Error Display */}
       {error && !showCode && (
-        <div className="absolute bottom-6 left-6 right-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 z-10 shadow-lg">
+        <div
+          className={`absolute ${
+            screenSize === "mobile" ? "bottom-4 left-2 right-2" : "bottom-6 left-6 right-6"
+          } bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 z-10 shadow-lg`}
+        >
           <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-semibold text-red-800">Diagram Rendering Error</p>
-            <p className="text-xs text-red-600 mt-1">{error}</p>
+            <p className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-semibold text-red-800`}>
+              Diagram Rendering Error
+            </p>
+            <p className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-red-600 mt-1`}>{error}</p>
             <button
-              className="mt-2 text-xs text-red-700 hover:text-red-800 underline"
+              className={`mt-2 ${screenSize === "mobile" ? "text-xs" : "text-xs"} text-red-700 hover:text-red-800 underline`}
               onClick={() => setShowCode(true)}
             >
               View diagram code for debugging
