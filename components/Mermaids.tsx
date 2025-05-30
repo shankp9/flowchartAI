@@ -481,6 +481,46 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
   }, [isFullscreen, onFullscreenChange])
 
+  // Safely clear container contents
+  const safelyClearContainer = useCallback((container: HTMLElement) => {
+    try {
+      // Method 1: Use innerHTML (most reliable but less performant)
+      container.innerHTML = ""
+    } catch (e) {
+      console.warn("Failed to clear container with innerHTML, trying alternative methods:", e)
+
+      try {
+        // Method 2: Remove children one by one
+        while (container.firstChild) {
+          try {
+            container.removeChild(container.firstChild)
+          } catch (childError) {
+            console.warn("Error removing child:", childError)
+            // If we can't remove a specific child, break the loop to avoid infinite loop
+            break
+          }
+        }
+      } catch (e2) {
+        console.warn("Failed to clear container with child removal:", e2)
+
+        try {
+          // Method 3: Replace the container with a clone
+          const parent = container.parentNode
+          if (parent) {
+            const clone = container.cloneNode(false) as HTMLElement
+            parent.replaceChild(clone, container)
+            // Update the reference if this is our containerRef
+            if (container === containerRef.current) {
+              containerRef.current = clone as HTMLDivElement
+            }
+          }
+        } catch (e3) {
+          console.error("All container clearing methods failed:", e3)
+        }
+      }
+    }
+  }, [])
+
   const renderChart = useCallback(
     async (chartCode: string, selectedTheme: Theme) => {
       const container = containerRef.current
@@ -492,15 +532,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setWasFixed(false)
         setWasConverted(false)
 
-        // Clear previous content safely
-        try {
-          while (container.firstChild) {
-            container.removeChild(container.firstChild)
-          }
-        } catch (e) {
-          container.innerHTML = ""
-        }
+        // Safely clear previous content
+        safelyClearContainer(container)
 
+        // Reset any data-processed attribute
         container.removeAttribute("data-processed")
 
         // Pre-validate and clean the code with multiple attempts
@@ -650,7 +685,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               }
             }
 
-            container.appendChild(wrapper)
+            // Safely append the new content
+            try {
+              container.appendChild(wrapper)
+            } catch (appendError) {
+              console.warn("Failed to append wrapper directly:", appendError)
+              // Fallback: Use innerHTML if appendChild fails
+              container.innerHTML = wrapper.outerHTML
+            }
 
             if (autoFit) {
               setTimeout(() => handleFitToScreen(), 100)
@@ -676,7 +718,17 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setIsRendering(false)
       }
     },
-    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
+    [
+      isClient,
+      autoFit,
+      handleFitToScreen,
+      isDragging,
+      wasFixed,
+      screenSize,
+      interactionMode,
+      selectedElement,
+      safelyClearContainer,
+    ],
   )
 
   // Helper function to safely initialize Mermaid
@@ -788,11 +840,35 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       <span class="flex-1">${messageText}</span>
     `
 
-      container.appendChild(successDiv)
+      // Safely append the message
+      try {
+        container.appendChild(successDiv)
+      } catch (e) {
+        console.warn("Failed to append success message:", e)
+        // Fallback: Use innerHTML
+        const tempDiv = document.createElement("div")
+        tempDiv.appendChild(successDiv)
+        container.innerHTML += tempDiv.innerHTML
+      }
+
       setTimeout(() => {
         try {
+          // Check if the element is still in the DOM and is a child of container
           if (successDiv.parentNode === container) {
             container.removeChild(successDiv)
+          } else if (document.body.contains(successDiv)) {
+            // If it's in the DOM but not a child of container
+            successDiv.parentNode?.removeChild(successDiv)
+          } else {
+            // If we can't find it, try to remove it by class
+            const messages = container.querySelectorAll(`.${bgColor.split(" ")[0]}`)
+            messages.forEach((msg) => {
+              try {
+                msg.parentNode?.removeChild(msg)
+              } catch (e) {
+                console.warn("Failed to remove message:", e)
+              }
+            })
           }
         } catch (e) {
           console.warn("Error removing success message:", e)
@@ -806,6 +882,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   // Helper function to show error message
   function showErrorMessage(container: HTMLElement, errorMessage: string, screenSize: string) {
     try {
+      // First clear the container safely
+      safelyClearContainer(container)
+
+      // Then add the error message
       const errorDiv = document.createElement("div")
       errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
       errorDiv.innerHTML = `
@@ -822,10 +902,21 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       </div>
     `
 
-      container.innerHTML = ""
-      container.appendChild(errorDiv)
+      try {
+        container.appendChild(errorDiv)
+      } catch (e) {
+        console.warn("Failed to append error message:", e)
+        // Fallback: Use innerHTML
+        container.innerHTML = errorDiv.outerHTML
+      }
     } catch (e) {
       console.warn("Error adding error message:", e)
+      // Ultimate fallback
+      try {
+        container.innerHTML = `<div class="text-red-500 p-4">Error rendering diagram</div>`
+      } catch (e2) {
+        console.error("Failed all error display attempts:", e2)
+      }
     }
   }
 
@@ -855,13 +946,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       const container = containerRef.current
       if (container) {
         try {
-          container.innerHTML = ""
+          safelyClearContainer(container)
         } catch (e) {
           console.warn("Error cleaning up container:", e)
         }
       }
     }
-  }, [chart, theme, isClient, renderChart])
+  }, [chart, theme, isClient, renderChart, safelyClearContainer])
 
   const handleThemeChange = useCallback(
     async (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1428,74 +1519,4 @@ function isValidMermaidCode(code: string): boolean {
     if (line.includes("{") && !line.includes("}")) return false
     if (line.includes("(") && !line.includes(")")) return false
 
-    // Check for malformed arrows
-    if (line.match(/[a-zA-Z0-9]-->[a-zA-Z0-9]/)) return false
-    if (line.match(/[a-zA-Z0-9]->[a-zA-Z0-9]/)) return false
-  }
-
-  return true
-}
-
-// Helper function to create simplified version from original
-function createSimplifiedFromOriginal(originalCode: string): string {
-  const firstLine = originalCode.split("\n")[0].trim().toLowerCase()
-
-  if (firstLine.includes("sequence")) {
-    return `sequenceDiagram
-    participant A as User
-    participant B as System
-    A->>B: Request
-    B-->>A: Response`
-  } else if (firstLine.includes("class")) {
-    return `classDiagram
-    class User {
-        +String name
-        +login()
-    }
-    class System {
-        +process()
-    }
-    User --> System`
-  } else if (firstLine.includes("journey")) {
-    return `journey
-    title User Journey
-    section Task
-        Step 1: 3: User
-        Step 2: 4: User`
-  } else {
-    return `graph TD
-    A[Start] --> B[Process]
-    B --> C[End]
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8`
-  }
-}
-
-function createFallbackDiagram(originalCode: string, errorMessage: string): string {
-  return `graph TD
-  A[Error] --> B(Check Syntax)
-  B --> C{Try Again}
-  style A fill:#f00,color:#fff
-  style B fill:#ff0,color:#000
-  style C fill:#0f0,color:#fff
-  classDef error fill:#f00,color:#fff
-  classDef warning fill:#ff0,color:#000
-  classDef success fill:#0f0,color:#fff
-  class A error
-  class B warning
-  class C success
-  linkStyle default stroke:black,fill:none;
-  subgraph Original Code
-  ${originalCode.substring(0, 100)}...
-  end
-  subgraph Error Message
-  ${errorMessage.substring(0, 100)}...
-  end`
-}
-
-// Helper function to create a simplified diagram
-function createSimplifiedDiagram(code: string): string {
-  return `graph TD
-    A[Start] --> B[End]`
-}
+//
