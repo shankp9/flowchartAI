@@ -26,23 +26,17 @@ import {
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
-import { Available_Themes } from "@/constants/themes"
 
 interface MermaidProps {
   chart: string
   isFullscreen?: boolean
   onFullscreenChange?: (fullscreen: boolean) => void
   isStandalone?: boolean
-  onRenderError?: (errorMessage: string, faultyCode: string) => void // New prop
 }
 
-export function Mermaid({
-  chart,
-  isFullscreen = false,
-  onFullscreenChange,
-  isStandalone = false,
-  onRenderError, // Add new prop
-}: MermaidProps) {
+const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
+
+export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
@@ -628,15 +622,16 @@ export function Mermaid({
             try {
               container.appendChild(successDiv)
               setTimeout(() => {
-                // Check if successDiv is still a child of the current container instance
-                if (containerRef.current && successDiv.parentNode === containerRef.current) {
-                  try {
-                    containerRef.current.removeChild(successDiv)
-                  } catch (e) {
-                    console.warn(
-                      "Failed to remove success message, it might have been already removed or container changed:",
-                      e,
-                    )
+                try {
+                  if (successDiv.parentNode === container) {
+                    container.removeChild(successDiv)
+                  } else if (successDiv.parentNode) {
+                    successDiv.parentNode.removeChild(successDiv)
+                  }
+                } catch (e) {
+                  console.warn("Error removing success message:", e)
+                  if (container.contains(successDiv)) {
+                    container.innerHTML = container.innerHTML
                   }
                 }
               }, 5000)
@@ -648,9 +643,6 @@ export function Mermaid({
           console.error("Mermaid rendering error:", error)
           const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
           setError(errorMessage)
-          if (onRenderError) {
-            onRenderError(errorMessage, cleanedCode) // Pass the code that caused the error
-          }
 
           const errorDiv = document.createElement("div")
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
@@ -720,17 +712,7 @@ export function Mermaid({
         setIsRendering(false)
       }
     },
-    [
-      isClient,
-      autoFit,
-      handleFitToScreen,
-      isDragging,
-      wasFixed,
-      screenSize,
-      interactionMode,
-      selectedElement,
-      onRenderError,
-    ],
+    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
   )
 
   // Update transform when zoom or pan changes
