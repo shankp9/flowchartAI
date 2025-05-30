@@ -4,27 +4,19 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   typescript: {
-    ignoreBuildErrors: false,
+    ignoreBuildErrors: false, // Should be false for production quality
   },
   images: {
-    unoptimized: true,
-    formats: ["image/webp", "image/avif"],
+    unoptimized: true, // Consider optimizing if you serve many images not via CDN
   },
   experimental: {
     optimizePackageImports: ["lucide-react"],
-    turbo: {
-      rules: {
-        "*.svg": {
-          loaders: ["@svgr/webpack"],
-          as: "*.js",
-        },
-      },
-    },
   },
   // Production optimizations
   compress: true,
   poweredByHeader: false,
-  generateEtags: false,
+  generateEtags: true, // ETag generation can be useful for caching
+  reactStrictMode: true, // Enforce React Strict Mode
 
   // Security headers
   async headers() {
@@ -45,32 +37,25 @@ const nextConfig = {
             value: "origin-when-cross-origin",
           },
           {
-            key: "X-XSS-Protection",
-            value: "1; mode=block",
+            key: "X-DNS-Prefetch-Control",
+            value: "on",
           },
           {
-            key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            key: "Strict-Transport-Security", // Enforce HTTPS
+            value: "max-age=63072000; includeSubDomains; preload",
           },
+          {
+            key: "Permissions-Policy", // Restrict browser features
+            value: "camera=(), microphone=(), geolocation=(), payment=()",
+          },
+          // Basic CSP - adjust as needed for your specific scripts, styles, and resources
+          // {
+          //   key: 'Content-Security-Policy',
+          //   value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://assets.vercel.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none';",
+          // },
         ],
       },
     ]
-  },
-
-  // Redirects for better SEO
-  async redirects() {
-    return [
-      {
-        source: "/home",
-        destination: "/",
-        permanent: true,
-      },
-    ]
-  },
-
-  // Environment variables validation
-  env: {
-    CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
 }
 

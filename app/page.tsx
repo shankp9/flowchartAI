@@ -18,27 +18,53 @@ import { ChatInput } from "@/components/ChatInput"
 import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ErrorBoundary } from "@/components/ErrorBoundary"
-import type { Message, DiagramGenerationResult } from "@/types"
-import { parseCodeFromMessage, detectDiagramType } from "@/lib/utils"
-import { useLocalStorage } from "@/hooks/useLocalStorage"
-import { useScreenSize } from "@/hooks/useScreenSize"
+import type { Message } from "@/types/type"
+import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
 import { APP_CONFIG } from "@/lib/constants"
-import { handleError } from "@/lib/errors"
+
+// Example diagrams for different types
+const EXAMPLE_DIAGRAMS = {
+  flowchart: `graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Action 1]
+    C -->|No| E[Action 2]
+    D --> F[End]
+    E --> F`,
+  sequence: `sequenceDiagram
+    participant User
+    participant System
+    participant Database
+    
+    User->>System: Request data
+    System->>Database: Query data
+    Database-->>System: Return results
+    System-->>User: Display results`,
+  journey: `journey
+    title User Journey
+    section Login
+      Enter credentials: 3: User
+      Validate: 2: System
+      Success: 5: User
+    section Dashboard
+      View data: 4: User
+      Interact: 3: User`,
+}
 
 export default function Home() {
   const [draftMessage, setDraftMessage] = useState<string>("")
-  const [messages, setMessages] = useLocalStorage<Message[]>("chat-messages", [])
+  const [messages, setMessages] = useState<Message[]>([])
   const [draftOutputCode, setDraftOutputCode] = useState<string>("")
-  const [outputCode, setOutputCode] = useLocalStorage<string>("current-diagram", "")
+  const [outputCode, setOutputCode] = useState<string>("")
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   // Independent window visibility states
-  const [chatVisible, setChatVisible] = useLocalStorage("chat-visible", true)
-  const [canvasVisible, setCanvasVisible] = useLocalStorage("canvas-visible", false)
+  const [chatVisible, setChatVisible] = useState(true)
+  const [canvasVisible, setCanvasVisible] = useState(false)
 
   const [error, setError] = useState<string>("")
+  const [retryCount, setRetryCount] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Enhanced retry state
@@ -46,12 +72,9 @@ export default function Home() {
   const [retryHistory, setRetryHistory] = useState<string[]>([])
   const [isRetrying, setIsRetrying] = useState(false)
 
-  // Refs for auto-scrolling
+  // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatScrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Custom hooks
-  const screenSize = useScreenSize()
 
   useEffect(() => {
     setIsClient(true)
@@ -64,6 +87,7 @@ export default function Home() {
       const isNearBottom =
         scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 100
 
+      // Only auto-scroll if user is near the bottom (to not interrupt manual scrolling)
       if (isNearBottom || messages.length === 1) {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
       }
@@ -75,7 +99,7 @@ export default function Home() {
     if (outputCode && !canvasVisible) {
       setCanvasVisible(true)
     }
-  }, [outputCode, canvasVisible, setCanvasVisible])
+  }, [outputCode, canvasVisible])
 
   // Calculate panel widths based on visibility
   const getPanelWidths = () => {
@@ -90,6 +114,7 @@ export default function Home() {
     } else if (!chatVisible && canvasVisible) {
       return { chatWidth: "hidden", canvasWidth: "w-full" }
     } else {
+      // Both hidden - show chat by default
       setChatVisible(true)
       return { chatWidth: "w-full", canvasWidth: "hidden" }
     }
@@ -97,76 +122,74 @@ export default function Home() {
 
   const { chatWidth, canvasWidth } = getPanelWidths()
 
-  const generateSummaryAndSuggestions = useCallback(
-    async (code: string) => {
-      try {
-        const summaryResponse = await fetch("/api/openai", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 1) A brief summary of what the diagram shows, 2) Three specific suggestions for improving or expanding the diagram. Format your response as JSON with 'summary' and 'suggestions' (array of strings) fields.",
-              },
-              {
-                role: "user",
-                content: `Analyze this Mermaid diagram and provide summary and suggestions:\n\n${code}`,
-              },
-            ],
-            model: "gpt-3.5-turbo",
-          }),
-        })
+  const generateSummaryAndSuggestions = useCallback(async (code: string) => {
+    try {
+      const summaryResponse = await fetch("/api/openai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 1) A brief summary of what the diagram shows, 2) Three specific suggestions for improving or expanding the diagram. Format your response as JSON with 'summary' and 'suggestions' (array of strings) fields.",
+            },
+            {
+              role: "user",
+              content: `Analyze this Mermaid diagram and provide summary and suggestions:\n\n${code}`,
+            },
+          ],
+          model: "gpt-3.5-turbo",
+        }),
+      })
 
-        if (summaryResponse.ok) {
-          const reader = summaryResponse.body?.getReader()
-          const decoder = new TextDecoder()
-          let result = ""
+      if (summaryResponse.ok) {
+        const reader = summaryResponse.body?.getReader()
+        const decoder = new TextDecoder()
+        let result = ""
 
-          if (reader) {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              result += decoder.decode(value)
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            result += decoder.decode(value)
+          }
+
+          try {
+            const parsed = JSON.parse(result)
+            const summary = parsed.summary || "Diagram generated successfully"
+            const suggestions = parsed.suggestions || [
+              "Add more detail to the process steps",
+              "Include error handling paths",
+              "Add decision points for better flow control",
+            ]
+
+            // Add summary as AI message
+            const summaryMessage: Message = {
+              role: "assistant",
+              content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
+              id: `ai-${Date.now()}`,
+              timestamp: Date.now(),
             }
 
-            try {
-              const parsed = JSON.parse(result)
-              const summary = parsed.summary || "Diagram generated successfully"
-              const suggestions = parsed.suggestions || [
-                "Add more detail to the process steps",
-                "Include alternative paths",
-                "Add decision points for better flow control",
-              ]
-
-              const summaryMessage: Message = {
-                role: "assistant",
-                content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
-                timestamp: Date.now(),
-                id: `summary-${Date.now()}`,
-              }
-
-              setMessages((prev) => [...prev, summaryMessage])
-            } catch {
-              const fallbackMessage: Message = {
-                role: "assistant",
-                content: "✅ Diagram generated successfully! The diagram looks good and follows proper syntax.",
-                timestamp: Date.now(),
-                id: `fallback-${Date.now()}`,
-              }
-              setMessages((prev) => [...prev, fallbackMessage])
+            setMessages((prev) => [...prev, summaryMessage])
+          } catch {
+            const fallbackMessage: Message = {
+              role: "assistant",
+              content: "✅ Diagram generated successfully! The diagram looks good and follows proper syntax.",
+              id: `ai-${Date.now()}`,
+              timestamp: Date.now(),
             }
+            setMessages((prev) => [...prev, fallbackMessage])
           }
         }
-      } catch (error) {
-        console.error("Error generating summary:", error)
       }
-    },
-    [setMessages],
-  )
+    } catch (error) {
+      console.error("Error generating summary:", error)
+    }
+  }, [])
 
   // Enhanced diagram generation with automatic retry logic
   const generateDiagramWithRetry = useCallback(
@@ -176,8 +199,11 @@ export default function Home() {
       attemptNumber = 0,
       previousErrors: string[] = [],
       isModification = false,
-    ): Promise<DiagramGenerationResult> => {
+    ): Promise<{ success: boolean; code?: string; error?: string }> => {
+      const maxRetries = 3
+
       try {
+        // Determine if the user is asking for a specific diagram type
         const diagramType = detectDiagramType(userMessage)
 
         const response = await fetch("/api/openai", {
@@ -190,7 +216,7 @@ export default function Home() {
             model: "gpt-3.5-turbo",
             retryAttempt: attemptNumber,
             previousErrors: previousErrors,
-            currentDiagram: outputCode,
+            currentDiagram: outputCode, // Send current diagram for context
             isModification: isModification,
             diagramType: diagramType,
           }),
@@ -217,25 +243,34 @@ export default function Home() {
           const chunkValue = decoder.decode(value)
           code += chunkValue
 
+          // Update draft code for real-time feedback
           if (attemptNumber === 0) {
             setDraftOutputCode((prevCode) => prevCode + chunkValue)
           }
         }
 
+        // Parse and sanitize the code
         const parsedCode = parseCodeFromMessage(code)
+        const sanitizedCode = sanitizeMermaidCode(parsedCode)
 
-        if (parsedCode && parsedCode.length > 10 && isBasicValidMermaid(parsedCode)) {
-          return { success: true, code: parsedCode, retryCount: attemptNumber }
+        // Validate the generated code
+        const validationResult = validateMermaidCode(sanitizedCode)
+
+        if (validationResult.isValid && sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
+          return { success: true, code: sanitizedCode }
         } else {
-          const errorMessage = "Invalid diagram structure generated"
+          const errorMessage = validationResult.errors.join("; ") || "Invalid diagram syntax generated"
 
-          if (attemptNumber < APP_CONFIG.MAX_RETRIES - 1) {
+          // If we haven't reached max retries, try again
+          if (attemptNumber < maxRetries - 1) {
             console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
 
+            // Add this error to the history
             const newErrors = [...previousErrors, errorMessage]
             setRetryHistory(newErrors)
             setRetryAttempts(attemptNumber + 1)
 
+            // Wait a brief moment before retrying
             await new Promise((resolve) => setTimeout(resolve, 1000))
 
             return await generateDiagramWithRetry(
@@ -246,24 +281,21 @@ export default function Home() {
               isModification,
             )
           } else {
-            return {
-              success: false,
-              error: `Failed after ${APP_CONFIG.MAX_RETRIES} attempts. Last error: ${errorMessage}`,
-              retryCount: attemptNumber,
-            }
+            return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
           }
         }
       } catch (error) {
-        const appError = handleError(error)
-        const errorMessage = appError.message
+        const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
 
-        if (attemptNumber < APP_CONFIG.MAX_RETRIES - 1) {
+        // If we haven't reached max retries, try again
+        if (attemptNumber < maxRetries - 1) {
           console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
 
           const newErrors = [...previousErrors, errorMessage]
           setRetryHistory(newErrors)
           setRetryAttempts(attemptNumber + 1)
 
+          // Wait a brief moment before retrying
           await new Promise((resolve) => setTimeout(resolve, 1000))
 
           return await generateDiagramWithRetry(
@@ -274,38 +306,12 @@ export default function Home() {
             isModification,
           )
         } else {
-          return {
-            success: false,
-            error: `Failed after ${APP_CONFIG.MAX_RETRIES} attempts. Last error: ${errorMessage}`,
-            retryCount: attemptNumber,
-          }
+          return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
         }
       }
     },
-    [outputCode, setRetryHistory, setRetryAttempts, setDraftOutputCode],
+    [outputCode],
   )
-
-  const isBasicValidMermaid = (code: string): boolean => {
-    if (!code || typeof code !== "string") return false
-
-    const trimmed = code.trim()
-    if (trimmed.length < 10) return false
-
-    const firstLine = trimmed.split("\n")[0].toLowerCase()
-    const validStarts = [
-      "graph",
-      "flowchart",
-      "sequencediagram",
-      "classdiagram",
-      "journey",
-      "gantt",
-      "statediagram",
-      "erdiagram",
-      "pie",
-    ]
-
-    return validStarts.some((start) => firstLine.startsWith(start))
-  }
 
   const handleSubmit = useCallback(async () => {
     if (!draftMessage.trim()) {
@@ -315,8 +321,8 @@ export default function Home() {
     const newMessage: Message = {
       role: "user",
       content: draftMessage,
-      timestamp: Date.now(),
       id: `user-${Date.now()}`,
+      timestamp: Date.now(),
     }
     const newMessages = [...messages, newMessage]
 
@@ -326,9 +332,11 @@ export default function Home() {
     setIsLoading(true)
     setIsRetrying(false)
     setError("")
+    setRetryCount(0)
     setRetryAttempts(0)
     setRetryHistory([])
 
+    // Check if this is a modification request
     const isModificationRequest =
       draftMessage.toLowerCase().includes("add") ||
       draftMessage.toLowerCase().includes("modify") ||
@@ -347,12 +355,13 @@ export default function Home() {
         setDraftOutputCode("")
         await generateSummaryAndSuggestions(result.code)
 
-        if ((result.retryCount ?? 0) > 0) {
+        // Add success message if there were retries
+        if (retryAttempts > 0) {
           const retryMessage: Message = {
             role: "assistant",
-            content: `✅ **Diagram generated successfully after ${(result.retryCount ?? 0) + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
-            timestamp: Date.now(),
+            content: `✅ **Diagram generated successfully after ${retryAttempts + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
             id: `retry-success-${Date.now()}`,
+            timestamp: Date.now(),
           }
           setMessages((prev) => [...prev, retryMessage])
         }
@@ -360,10 +369,10 @@ export default function Home() {
         throw new Error(result.error || "Failed to generate valid diagram")
       }
     } catch (error) {
-      const appError = handleError(error)
-      console.error("Final generation error:", appError)
-      setError(appError.message)
+      console.error("Final generation error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
 
+      // Show retry history in error message
       if (retryHistory.length > 0) {
         const retryInfo = `\n\nRetry attempts made:\n${retryHistory.map((err, i) => `• Attempt ${i + 1}: ${err}`).join("\n")}`
         setError((prev) => prev + retryInfo)
@@ -372,23 +381,55 @@ export default function Home() {
       setIsLoading(false)
       setIsRetrying(false)
     }
-  }, [
-    draftMessage,
-    messages,
-    generateDiagramWithRetry,
-    generateSummaryAndSuggestions,
-    retryHistory,
-    setMessages,
-    setOutputCode,
-  ])
+  }, [draftMessage, messages, generateDiagramWithRetry, generateSummaryAndSuggestions, retryAttempts, retryHistory])
+
+  // Function to detect the diagram type from user input
+  const detectDiagramType = (input: string): string | null => {
+    const lowercaseInput = input.toLowerCase()
+
+    if (lowercaseInput.includes("flow") || lowercaseInput.includes("process")) {
+      return "flowchart"
+    }
+    if (
+      lowercaseInput.includes("sequence") ||
+      lowercaseInput.includes("interaction") ||
+      lowercaseInput.includes("api")
+    ) {
+      return "sequence"
+    }
+    if (lowercaseInput.includes("class") || lowercaseInput.includes("object")) {
+      return "class"
+    }
+    if (lowercaseInput.includes("journey") || lowercaseInput.includes("user experience")) {
+      return "journey"
+    }
+    if (
+      lowercaseInput.includes("gantt") ||
+      lowercaseInput.includes("timeline") ||
+      lowercaseInput.includes("schedule")
+    ) {
+      return "gantt"
+    }
+    if (lowercaseInput.includes("state") || lowercaseInput.includes("status")) {
+      return "state"
+    }
+    if (lowercaseInput.includes("er") || lowercaseInput.includes("entity") || lowercaseInput.includes("database")) {
+      return "er"
+    }
+    if (lowercaseInput.includes("pie") || lowercaseInput.includes("chart") || lowercaseInput.includes("distribution")) {
+      return "pie"
+    }
+
+    return null
+  }
 
   const handleSuggestionClick = useCallback(
     async (suggestion: string) => {
       const newMessage: Message = {
         role: "user",
-        content: suggestion,
+        content: suggestion, // Just show the clean suggestion text to user
+        id: `user-${Date.now()}`,
         timestamp: Date.now(),
-        id: `suggestion-${Date.now()}`,
       }
       const newMessages = [...messages, newMessage]
 
@@ -403,6 +444,7 @@ export default function Home() {
 
       try {
         setIsRetrying(true)
+        // Pass true for isModification since suggestions are always modifications
         const result = await generateDiagramWithRetry(suggestion, messages, 0, [], true)
 
         if (result.success && result.code) {
@@ -413,21 +455,21 @@ export default function Home() {
           throw new Error(result.error || "Failed to generate valid diagram")
         }
       } catch (error) {
-        const appError = handleError(error)
-        console.error("Suggestion generation error:", appError)
-        setError(appError.message)
+        console.error("Suggestion generation error:", error)
+        setError(error instanceof Error ? error.message : "An error occurred")
       } finally {
         setIsLoading(false)
         setIsRetrying(false)
       }
     },
-    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions, setMessages, setOutputCode],
+    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
   )
 
   const handleRetry = useCallback(() => {
     if (draftMessage) {
       handleSubmit()
     } else if (messages.length > 0) {
+      // Retry the last message
       const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
       if (lastUserMessage) {
         setDraftMessage(lastUserMessage.content)
@@ -438,12 +480,16 @@ export default function Home() {
     }
   }, [draftMessage, messages, handleSubmit])
 
+  // Toggle functions for independent window control
   const toggleChatVisibility = () => {
     if (chatVisible && canvasVisible) {
+      // Both visible - hide chat
       setChatVisible(false)
     } else if (!chatVisible && canvasVisible) {
+      // Only canvas visible - show chat
       setChatVisible(true)
     } else if (chatVisible && !canvasVisible) {
+      // Only chat visible - show canvas if we have content
       if (outputCode) {
         setCanvasVisible(true)
       }
@@ -452,12 +498,15 @@ export default function Home() {
 
   const toggleCanvasVisibility = () => {
     if (chatVisible && canvasVisible) {
+      // Both visible - hide canvas
       setCanvasVisible(false)
     } else if (chatVisible && !canvasVisible) {
+      // Only chat visible - show canvas if we have content
       if (outputCode) {
         setCanvasVisible(true)
       }
     } else if (!chatVisible && canvasVisible) {
+      // Only canvas visible - show chat
       setChatVisible(true)
     }
   }
@@ -471,18 +520,18 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-gray-50">
+    <main className="flex-1 flex h-[calc(100vh-4rem)] overflow-hidden bg-gray-50">
       {/* Chat Panel */}
       <div
         className={`${chatWidth} transition-all duration-500 ease-in-out border-r border-gray-200 flex flex-col bg-white shadow-lg overflow-hidden`}
       >
-        {/* Chat Header */}
-        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+        {/* Chat Header - Fixed */}
+        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-blue-600" />
               <span className="font-bold text-lg bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                {APP_CONFIG.NAME}
+                FlowchartAI
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -500,6 +549,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Canvas visibility toggle */}
             {outputCode && (
               <Button
                 variant="ghost"
@@ -512,6 +562,7 @@ export default function Home() {
               </Button>
             )}
 
+            {/* Chat collapse toggle */}
             <Button
               variant="ghost"
               size="sm"
@@ -524,7 +575,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Messages - Scrollable Container */}
         <div
           ref={chatScrollContainerRef}
           className="flex-1 overflow-y-auto overflow-x-hidden chat-scroll"
@@ -546,6 +597,7 @@ export default function Home() {
                 </p>
               </div>
 
+              {/* Example prompts */}
               <div className="space-y-3 pt-4">
                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Try these examples:</p>
                 <div className="space-y-2">
@@ -572,7 +624,7 @@ export default function Home() {
                   Auto-Retry
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                  Smart Validation
+                  Error Correction
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
                   Valid Syntax
@@ -583,7 +635,7 @@ export default function Home() {
             <div className="space-y-4 p-4">
               {messages.map((message, index) => (
                 <ChatMessage
-                  key={message.id || `${message.content}-${index}`}
+                  key={message.id || `msg-${index}`}
                   message={message.content}
                   role={message.role}
                   onSuggestionClick={handleSuggestionClick}
@@ -633,15 +685,16 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              {/* Invisible element for auto-scrolling */}
               <div ref={messagesEndRef} className="h-1" />
             </div>
           )}
         </div>
 
-        {/* Input */}
-        <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0 sticky bottom-0 z-10">
+        {/* Input - Fixed at bottom */}
+        <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
           <ChatInput
-            messageContent={draftMessage}
+            messageCotent={draftMessage}
             onChange={setDraftMessage}
             onSubmit={handleSubmit}
             isLoading={isLoading}
@@ -649,12 +702,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Canvas Panel */}
+      {/* Canvas Panel - Only show when there's content and visible */}
       {canvasVisible && (
         <div
           className={`${canvasWidth} transition-all duration-500 ease-in-out flex flex-col bg-gray-50 shadow-lg overflow-hidden`}
         >
-          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+          {/* Canvas Header - Fixed */}
+          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
               <h2 className="font-bold text-lg text-gray-800">Interactive Canvas</h2>
               {outputCode && (
@@ -670,6 +724,7 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Chat visibility toggle */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -680,6 +735,7 @@ export default function Home() {
                 {chatVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
 
+              {/* Canvas collapse toggle */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -692,35 +748,33 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Canvas Content - Fixed height, no scrolling */}
           <div className="flex-1 relative overflow-hidden">
-            <ErrorBoundary>
-              {outputCode ? (
-                <Mermaid
-                  chart={outputCode}
-                  isFullscreen={isFullscreen}
-                  onFullscreenChange={setIsFullscreen}
-                  isStandalone={!chatVisible}
-                />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center space-y-4 max-w-md">
-                    <div className="w-20 h-20 mx-auto bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                      <Sparkles className="h-10 w-10 text-gray-500" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-lg">Your diagram will appear here</h3>
-                      <p className="text-sm text-gray-600">
-                        Describe the diagram you want to create in natural language
-                      </p>
-                    </div>
+            {outputCode ? (
+              <Mermaid
+                chart={outputCode}
+                isFullscreen={isFullscreen}
+                onFullscreenChange={setIsFullscreen}
+                isStandalone={!chatVisible}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center space-y-4 max-w-md">
+                  <div className="w-20 h-20 mx-auto bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
+                    <Sparkles className="h-10 w-10 text-gray-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-lg">Your diagram will appear here</h3>
+                    <p className="text-sm text-gray-600">Describe the diagram you want to create in natural language</p>
                   </div>
                 </div>
-              )}
-            </ErrorBoundary>
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* Show canvas button when hidden but has content */}
       {!canvasVisible && outputCode && (
         <div className="fixed bottom-6 right-6 z-40">
           <Button
@@ -732,6 +786,6 @@ export default function Home() {
           </Button>
         </div>
       )}
-    </div>
+    </main>
   )
 }

@@ -1,12 +1,25 @@
-// Application constants
+// lib/constants.ts
 export const APP_CONFIG = {
   NAME: "FlowchartAI",
-  DESCRIPTION: "AI-Powered Diagram Generator",
-  VERSION: "2.0.0",
-  MAX_RETRIES: 3,
+  DESCRIPTION: "Create professional diagrams using natural language with AI.",
   MAX_MESSAGE_LENGTH: 2000,
-  DEBOUNCE_DELAY: 300,
-} as const
+  MAX_RETRIES: 3,
+  DEBOUNCE_DELAY: 300, // milliseconds
+  DEFAULT_MERMAID_THEME: "default",
+  AVAILABLE_MERMAID_THEMES: ["default", "neutral", "dark", "forest", "base"],
+  API_TIMEOUT: 30000, // 30 seconds for API requests
+}
+
+export const ERROR_MESSAGES = {
+  API_KEY_MISSING: "OpenAI API key not configured. Please set the OPENAI_API_KEY environment variable.",
+  NETWORK_ERROR: "A network error occurred. Please check your connection and try again.",
+  TIMEOUT_ERROR: "The request timed out. Please try again.",
+  UNKNOWN_ERROR: "An unknown error occurred. Please try again later.",
+  DIAGRAM_GENERATION_FAILED: "Failed to generate diagram after multiple attempts.",
+  SUMMARY_GENERATION_FAILED: "Failed to generate diagram summary and suggestions.",
+  INVALID_INPUT: "Invalid input provided. Please check your message.",
+  RATE_LIMIT: "API rate limit exceeded. Please try again later.",
+}
 
 export const DIAGRAM_TYPES = {
   FLOWCHART: "flowchart",
@@ -19,44 +32,4 @@ export const DIAGRAM_TYPES = {
   PIE: "pie",
 } as const
 
-export const MERMAID_THEMES = ["default", "neutral", "dark", "forest", "base"] as const
-
-export const SCREEN_BREAKPOINTS = {
-  MOBILE: 768,
-  TABLET: 1024,
-} as const
-
-export const ZOOM_CONFIG = {
-  MIN: 0.1,
-  MAX: 5,
-  STEP: 0.2,
-  MOBILE_STEP: 0.15,
-} as const
-
-export const EXAMPLE_DIAGRAMS = {
-  flowchart: `graph TD
-    A[Start] --> B[Process]
-    B --> C{Decision}
-    C -->|Yes| D[Action 1]
-    C -->|No| E[Action 2]
-    D --> F[End]
-    E --> F`,
-  sequence: `sequenceDiagram
-    participant User
-    participant System
-    participant Database
-    
-    User->>System: Request data
-    System->>Database: Query data
-    Database-->>System: Return results
-    System-->>User: Display results`,
-  journey: `journey
-    title User Journey
-    section Login
-      Enter credentials: 3: User
-      Validate: 2: System
-      Success: 5: User
-    section Dashboard
-      View data: 4: User
-      Interact: 3: User`,
-} as const
+export type DiagramType = (typeof DIAGRAM_TYPES)[keyof typeof DIAGRAM_TYPES]
