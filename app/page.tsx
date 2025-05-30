@@ -184,8 +184,24 @@ export default function Home() {
     const diagramType = detectDiagramType(draftMessage)
     let promptContent = draftMessage
 
-    // Add specific instructions based on diagram type
-    if (diagramType) {
+    // Get current diagram for context if this seems like a modification request
+    const isModificationRequest =
+      draftMessage.toLowerCase().includes("add") ||
+      draftMessage.toLowerCase().includes("modify") ||
+      draftMessage.toLowerCase().includes("change") ||
+      draftMessage.toLowerCase().includes("update") ||
+      draftMessage.toLowerCase().includes("improve")
+
+    if (isModificationRequest && outputCode) {
+      promptContent = `${draftMessage}
+
+Current diagram:
+\`\`\`mermaid
+${outputCode}
+\`\`\`
+
+Please modify this diagram according to the request while maintaining proper Mermaid syntax.`
+    } else if (diagramType) {
       promptContent = `Create a ${diagramType} diagram for: ${draftMessage}. Use proper Mermaid syntax for ${diagramType} diagrams.`
     }
 
@@ -244,30 +260,26 @@ export default function Home() {
       console.error("Request error:", error)
       setError(error instanceof Error ? error.message : "An error occurred")
 
-      // If this is the first attempt, try again with more specific instructions
+      // Enhanced retry logic with better prompts
       if (retryCount === 0) {
         setRetryCount(1)
-
-        // Determine the best diagram type if not already specified
         const fallbackType = diagramType || "flowchart"
 
-        // Create a more specific prompt with an example
         const retryMessage: Message = {
           role: "user",
-          content: `Create a ${fallbackType} diagram for: ${draftMessage}. 
-          
-Here's an example of valid ${fallbackType} syntax:
+          content: `Create a simple ${fallbackType} diagram for: ${draftMessage}. 
+        
+Use this exact syntax pattern:
 ${EXAMPLE_DIAGRAMS[fallbackType as keyof typeof EXAMPLE_DIAGRAMS] || EXAMPLE_DIAGRAMS.flowchart}
 
-Please follow this exact syntax pattern but create a diagram for my request.`,
+Replace the content with elements relevant to my request, but keep the exact same syntax structure.`,
         }
 
-        // Add the retry message to the conversation
         const retryMessages = [...newMessages, retryMessage]
 
         try {
           setIsLoading(true)
-          setError("Retrying with more specific instructions...")
+          setError("Retrying with simplified syntax...")
 
           const retryResponse = await fetch("/api/openai", {
             method: "POST",
@@ -312,10 +324,9 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
           setError("Unable to generate diagram. Please try again with a more specific request.")
         }
       }
-    } finally {
       setIsLoading(false)
     }
-  }, [draftMessage, messages, generateSummaryAndSuggestions, retryCount])
+  }, [draftMessage, messages, generateSummaryAndSuggestions, retryCount, outputCode])
 
   // Function to detect the diagram type from user input
   const detectDiagramType = (input: string): string | null => {
@@ -359,7 +370,17 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
 
   const handleSuggestionClick = useCallback(
     async (suggestion: string) => {
-      const improvementPrompt = `Based on the current diagram, ${suggestion.toLowerCase()}. Please update the diagram accordingly.`
+      // Get the current diagram code for context
+      const currentDiagram = outputCode || draftOutputCode
+
+      const improvementPrompt = `Based on the current diagram, ${suggestion.toLowerCase()}. 
+
+Current diagram:
+\`\`\`mermaid
+${currentDiagram}
+\`\`\`
+
+Please update this diagram to incorporate the suggestion while maintaining the existing structure and connections.`
 
       const newMessage: Message = {
         role: "user",
@@ -411,9 +432,11 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
         const parsedCode = parseCodeFromMessage(code)
         const sanitizedCode = sanitizeMermaidCode(parsedCode)
 
-        if (sanitizedCode) {
+        if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
           setOutputCode(sanitizedCode)
           await generateSummaryAndSuggestions(sanitizedCode)
+        } else {
+          throw new Error("Invalid diagram syntax received")
         }
       } catch (error) {
         console.error("Request error:", error)
@@ -422,7 +445,7 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
         setIsLoading(false)
       }
     },
-    [messages, generateSummaryAndSuggestions],
+    [messages, generateSummaryAndSuggestions, outputCode, draftOutputCode],
   )
 
   const handleRetry = useCallback(() => {

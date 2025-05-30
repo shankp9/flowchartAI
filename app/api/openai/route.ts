@@ -26,20 +26,33 @@ export async function POST(req: NextRequest) {
       systemMessage = {
         role: "system",
         content: `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
-        1) A brief summary of what the diagram shows (max 50 words)
-        2) Three specific, actionable suggestions for improving or expanding the diagram
-        
-        Respond ONLY with valid JSON in this exact format:
-        {
-          "summary": "Brief description of the diagram",
-          "suggestions": [
-            "First specific suggestion",
-            "Second specific suggestion", 
-            "Third specific suggestion"
-          ]
-        }`,
+    1) A brief summary of what the diagram shows (max 50 words)
+    2) Three specific, actionable suggestions for improving or expanding the diagram
+    
+    Respond ONLY with valid JSON in this exact format:
+    {
+      "summary": "Brief description of the diagram",
+      "suggestions": [
+        "First specific suggestion",
+        "Second specific suggestion", 
+        "Third specific suggestion"
+      ]
+    }`,
       }
     } else {
+      // Find the last generated diagram code from the conversation
+      let lastDiagramCode = ""
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "assistant") {
+          const content = messages[i].content
+          const codeMatch = content.match(/```(?:mermaid)?\n([\s\S]*?)\n```/)
+          if (codeMatch) {
+            lastDiagramCode = codeMatch[1].trim()
+            break
+          }
+        }
+      }
+
       systemMessage = {
         role: "system",
         content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
@@ -50,6 +63,19 @@ CRITICAL RULES:
 3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
 4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
 5. NEVER start a line with just an arrow (-->> or ->>)
+6. When modifying existing diagrams, maintain the same structure and add improvements
+
+${
+  lastDiagramCode
+    ? `EXISTING DIAGRAM CONTEXT:
+The user has this existing diagram:
+\`\`\`
+${lastDiagramCode}
+\`\`\`
+
+When making modifications, build upon this existing diagram structure. Maintain existing nodes and connections while adding the requested improvements.`
+    : ""
+}
 
 SEQUENCE DIAGRAM SYNTAX RULES:
 - CORRECT: "ParticipantA ->> ParticipantB: Message"
@@ -57,20 +83,19 @@ SEQUENCE DIAGRAM SYNTAX RULES:
 - INCORRECT: "->> ParticipantB: Message" (missing sender)
 - INCORRECT: "-->> ParticipantB: Response" (missing sender)
 
-VALID SEQUENCE DIAGRAM EXAMPLE:
-sequenceDiagram
-    participant Client
-    participant API
-    participant Database
-    
-    Client ->> API: Request data
-    API ->> Database: Query
-    Database -->> API: Results
-    API -->> Client: Response
-
 FLOWCHART SYNTAX RULES:
 - CORRECT: "A[Start] --> B[Process] --> C[End]"
 - INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
+
+VALID DIAGRAM TYPES:
+- graph TD / graph LR (flowchart)
+- sequenceDiagram
+- classDiagram
+- journey
+- gantt
+- stateDiagram-v2
+- erDiagram
+- pie
 
 RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!`,
       }

@@ -45,16 +45,20 @@ export function ChatMessage({ message, role = "user", onSuggestionClick }: ChatM
 
           {/* Render clickable suggestion buttons */}
           {suggestions.length > 0 && onSuggestionClick && (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-2">
+              <div className="text-xs text-gray-500 font-medium mb-2">Click any suggestion to apply it:</div>
               {suggestions.map((suggestion, index) => (
                 <Button
                   key={index}
                   variant="outline"
                   size="sm"
-                  className="w-full text-left justify-start h-auto p-3 text-xs hover:bg-blue-50 hover:border-blue-300"
+                  className="w-full text-left justify-start h-auto p-3 text-xs hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
                   onClick={() => onSuggestionClick(suggestion)}
                 >
-                  💡 {suggestion}
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">💡</span>
+                    <span className="flex-1">{suggestion}</span>
+                  </div>
                 </Button>
               ))}
             </div>

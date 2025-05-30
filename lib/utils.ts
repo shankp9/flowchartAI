@@ -32,6 +32,33 @@ export function sanitizeMermaidCode(code: string): string {
   cleanedCode = cleanedCode.replace(/^```(?:mermaid)?\n?/gm, "")
   cleanedCode = cleanedCode.replace(/\n?```$/gm, "")
 
+  // Remove any explanatory text before the diagram
+  const lines = cleanedCode.split("\n")
+  let diagramStartIndex = -1
+
+  // Find where the actual diagram starts
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().toLowerCase()
+    if (
+      line.startsWith("graph") ||
+      line.startsWith("flowchart") ||
+      line.startsWith("sequencediagram") ||
+      line.startsWith("classdiagram") ||
+      line.startsWith("journey") ||
+      line.startsWith("gantt") ||
+      line.startsWith("statediagram") ||
+      line.startsWith("erdiagram") ||
+      line.startsWith("pie")
+    ) {
+      diagramStartIndex = i
+      break
+    }
+  }
+
+  if (diagramStartIndex > 0) {
+    cleanedCode = lines.slice(diagramStartIndex).join("\n")
+  }
+
   // Check if this is old flowchart syntax and convert it
   if (isOldFlowchartSyntax(cleanedCode)) {
     cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
@@ -47,6 +74,11 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = fixFlowchartSyntax(cleanedCode)
   }
 
+  // Validate the final code
+  if (!validateMermaidSyntax(cleanedCode)) {
+    console.warn("Generated code may have syntax issues:", cleanedCode)
+  }
+
   // Remove empty lines and normalize whitespace
   cleanedCode = cleanedCode
     .split("\n")
@@ -55,6 +87,45 @@ export function sanitizeMermaidCode(code: string): string {
     .join("\n")
 
   return cleanedCode
+}
+
+function validateMermaidSyntax(code: string): boolean {
+  const lines = code
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (lines.length === 0) return false
+
+  const firstLine = lines[0].toLowerCase()
+
+  // Check if it starts with a valid diagram type
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+  ]
+
+  const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
+  if (!hasValidStart) return false
+
+  // Additional validation for sequence diagrams
+  if (firstLine.startsWith("sequencediagram")) {
+    for (const line of lines.slice(1)) {
+      // Check for arrows without senders
+      if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
+        return false
+      }
+    }
+  }
+
+  return true
 }
 
 function isOldFlowchartSyntax(code: string): boolean {
@@ -136,6 +207,7 @@ function fixSequenceDiagramSyntax(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
   let lastParticipant = ""
+  const participants = new Set<string>()
 
   for (const line of lines) {
     let fixedLine = line.trim()
@@ -151,7 +223,9 @@ function fixSequenceDiagramSyntax(code: string): string {
       fixedLines.push(fixedLine)
       const participantMatch = fixedLine.match(/participant\s+(\w+)/)
       if (participantMatch) {
-        lastParticipant = participantMatch[1]
+        const participant = participantMatch[1]
+        participants.add(participant)
+        lastParticipant = participant
       }
       continue
     }
@@ -161,15 +235,23 @@ function fixSequenceDiagramSyntax(code: string): string {
       if (lastParticipant) {
         fixedLine = `${lastParticipant} ${fixedLine}`
       } else {
-        // If no last participant, skip this line or add a default
-        fixedLine = `System ${fixedLine}`
+        // Add a default participant if none exists
+        if (participants.size === 0) {
+          fixedLines.splice(-1, 0, "participant System")
+          participants.add("System")
+        }
+        const defaultParticipant = Array.from(participants)[0]
+        fixedLine = `${defaultParticipant} ${fixedLine}`
       }
     }
 
-    // Extract participant from valid arrow syntax
-    const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)/)
+    // Extract participant from valid arrow syntax and add to participants set
+    const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)/)
     if (arrowMatch) {
-      lastParticipant = arrowMatch[1]
+      const [, sender, , receiver] = arrowMatch
+      participants.add(sender)
+      participants.add(receiver)
+      lastParticipant = sender
     }
 
     fixedLines.push(fixedLine)
