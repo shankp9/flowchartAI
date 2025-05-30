@@ -1,19 +1,121 @@
-import { OpenAIStream } from "@/lib/utils";
-import { type RequestBody } from "@/types/type";
+import { type NextRequest, NextResponse } from "next/server"
 
-export const config = {
-  runtime: "edge",
-};
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { messages, model, apiKey } = (await req.json()) as RequestBody;
+    const { messages, model = "gpt-3.5-turbo" } = await req.json()
 
-    const stream = await OpenAIStream(messages, model, apiKey);
+    // Get API key from environment variables
+    const apiKey = process.env.OPENAI_API_KEY
 
-    return new Response(stream);
+    if (!apiKey) {
+      console.error("OPENAI_API_KEY environment variable is not set")
+      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 })
+    }
+
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json({ error: "Messages array is required" }, { status: 400 })
+    }
+
+    const systemMessage = {
+      role: "system",
+      content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+      
+Available diagram types:
+- Flowchart: graph TD or graph LR
+- Sequence diagram: sequenceDiagram
+- Class diagram: classDiagram
+- User journey: journey
+- Gantt chart: gantt
+- C4 diagram: C4Context, C4Container, C4Component
+
+Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+    }
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [systemMessage, ...messages],
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.text()
+      console.error("OpenAI API error:", response.status, errorData)
+
+      if (response.status === 401) {
+        return NextResponse.json(
+          { error: "Invalid OpenAI API key. Please check your API key configuration." },
+          { status: 401 },
+        )
+      }
+
+      return NextResponse.json({ error: `OpenAI API error: ${response.status}` }, { status: response.status })
+    }
+
+    // Create a readable stream for the response
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = response.body?.getReader()
+        if (!reader) {
+          controller.close()
+          return
+        }
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            const chunk = decoder.decode(value)
+            const lines = chunk.split("\n")
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6)
+                if (data === "[DONE]") {
+                  controller.close()
+                  return
+                }
+
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    controller.enqueue(encoder.encode(content))
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Stream error:", error)
+          controller.error(error)
+        } finally {
+          reader.releaseLock()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+    })
   } catch (error) {
-    console.error(error);
-    return new Response("Error", { status: 500 });
+    console.error("API route error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

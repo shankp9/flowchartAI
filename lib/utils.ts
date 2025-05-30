@@ -1,118 +1,105 @@
-import { ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-import {
-  createParser,
-  ParsedEvent,
-  ReconnectInterval,
-} from "eventsource-parser";
-import endent from "endent";
-import { deflate } from "pako";
-import { fromUint8Array } from "js-base64";
-
-import { type Message } from "@/types/type";
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+import type { Message, OpenAIModel } from "@/types/type"
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs))
 }
 
-const systemPrompt = endent`
-  You are an assistant to help user build diagram with Mermaid.
-  You only need to return the output Mermaid code block.
-  Do not include any description, do not include the \`\`\`.
-  Code (no \`\`\`):
-  `;
+export function serializeCode(code: string): string {
+  try {
+    return btoa(unescape(encodeURIComponent(code)))
+  } catch (error) {
+    console.error("Error serializing code:", error)
+    return ""
+  }
+}
 
-export const OpenAIStream = async (
-  messages: Message[],
-  model: string,
-  key: string
-) => {
-  const system = { role: "system", content: systemPrompt };
-  const res = await fetch(`https://api.openai.com/v1/chat/completions`, {
+export function parseCodeFromMessage(message: string): string {
+  const codeBlockRegex = /```(?:mermaid)?\n([\s\S]*?)\n```/g
+  const match = codeBlockRegex.exec(message)
+  return match ? match[1].trim() : message.trim()
+}
+
+export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
+  const systemMessage: Message = {
+    role: "system",
+    content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+    
+Available diagram types:
+- Flowchart: graph TD or graph LR
+- Sequence diagram: sequenceDiagram
+- Class diagram: classDiagram
+- User journey: journey
+- Gantt chart: gantt
+- C4 diagram: C4Context, C4Container, C4Component
+
+Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key || process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
-    method: "POST",
     body: JSON.stringify({
       model,
-      messages: [system, ...messages],
-      temperature: 0,
+      messages: [systemMessage, ...messages],
       stream: true,
+      temperature: 0.7,
+      max_tokens: 1000,
     }),
-  });
+  })
 
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  if (res.status !== 200) {
-    const statusText = res.statusText;
-    const result = await res.body?.getReader().read();
-    throw new Error(
-      `OpenAI API returned an error: ${
-        decoder.decode(result?.value) || statusText
-      }`
-    );
+  if (!response.ok) {
+    throw new Error(`OpenAI API error: ${response.status}`)
   }
 
-  const stream = new ReadableStream({
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+
+  return new ReadableStream({
     async start(controller) {
-      const onParse = (event: ParsedEvent | ReconnectInterval) => {
-        if (event.type === "event") {
-          const data = event.data;
+      const reader = response.body?.getReader()
+      if (!reader) {
+        controller.close()
+        return
+      }
 
-          if (data === "[DONE]") {
-            controller.close();
-            return;
-          }
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-          try {
-            const json = JSON.parse(data);
-            const text = json.choices[0].delta.content;
-            const queue = encoder.encode(text);
-            controller.enqueue(queue);
-          } catch (e) {
-            controller.error(e);
+          const chunk = decoder.decode(value)
+          const lines = chunk.split("\n")
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6)
+              if (data === "[DONE]") {
+                controller.close()
+                return
+              }
+
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content
+                if (content) {
+                  controller.enqueue(encoder.encode(content))
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
           }
         }
-      };
-
-      const parser = createParser(onParse);
-
-      for await (const chunk of res.body as any) {
-        parser.feed(decoder.decode(chunk));
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        reader.releaseLock()
       }
     },
-  });
-
-  return stream;
-};
-
-export const parseCodeFromMessage = (message: string) => {
-  const regex = /```(?:mermaid)?\s*([\s\S]*?)```/;
-  const match = message.match(regex);
-
-  if (match) {
-    return match[1];
-  } else {
-    return message;
-  }
-};
-
-export const serializeCode = (code: string) => {
-  const state = {
-    code: parseCodeFromMessage(code),
-    mermaid: JSON.stringify(
-      {
-        theme: "default",
-      },
-      undefined,
-      2
-    ),
-    autoSync: true,
-    updateDiagram: true,
-  };
-  const data = new TextEncoder().encode(JSON.stringify(state));
-  const compressed = deflate(data, { level: 9 });
-  return fromUint8Array(compressed, true);
-};
+  })
+}

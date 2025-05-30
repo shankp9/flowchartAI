@@ -10,6 +10,7 @@ export const metadata = {
   title: "FlowchartAI",
   description:
     "Draw flowchart, sequence diagram, class diagram, user journey, gantt, C4C diagram with nature language.",
+    generator: 'v0.dev'
 };
 
 const fontSans = FontSans({
