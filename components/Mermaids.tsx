@@ -164,9 +164,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
+      e.stopPropagation()
 
-      // More controlled zoom with smaller increments
-      const zoomSensitivity = screenSize === "mobile" ? 0.05 : 0.1
+      // Reduced zoom sensitivity to 30% of original
+      const zoomSensitivity = screenSize === "mobile" ? 0.015 : 0.03
       const delta = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity
 
       // Get mouse position relative to container
@@ -317,7 +318,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
 
     // Add event listeners with proper options
-    container.addEventListener("wheel", handleWheel, { passive: false })
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true })
     container.addEventListener("mousedown", handleMouseDown)
     container.addEventListener("mousemove", handleMouseMove)
     container.addEventListener("mouseup", handleMouseUp)
@@ -841,7 +842,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const currentThemeConfig = ThemeConfigs[theme]
 
   return (
-    <div className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}>
+    <div
+      className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}
+      style={{ isolation: "isolate" }}
+    >
       {/* Grid Background */}
       {showGrid && (
         <div
@@ -871,7 +875,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zM12 13a1 1 0 110-2 1 1 0 010 2zM12 20a1 1 0 110-2 1 1 0 010 2z"
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zM12 13a1 1 0 110-2 1 1 0 010 
+                2zM12 20a1 1 0 110-2 1 1 0 010 2z"
               />
             </svg>
           </button>
@@ -1258,6 +1263,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             interactionMode === "select" ? "crosshair" : zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
           minHeight: "300px",
           touchAction: "none", // Prevent default touch behaviors
+          position: "relative",
+          isolation: "isolate", // Create new stacking context
         }}
         onMouseEnter={() => {
           // Only auto-show controls on hover when in fullscreen mode
@@ -1272,7 +1279,15 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           }
         }}
       >
-        <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
+        <div
+          ref={containerRef}
+          className="w-full h-full relative flex items-center justify-center"
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            isolation: "isolate",
+          }}
+        >
           {isRendering && (
             <div className="flex flex-col items-center gap-4 text-gray-500">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
