@@ -515,7 +515,7 @@ export default function Home() {
         className={`${chatWidth} transition-all duration-500 ease-in-out border-r border-gray-200 flex flex-col bg-white shadow-lg overflow-hidden`}
       >
         {/* Chat Header - Fixed */}
-        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0">
+        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-blue-600" />
@@ -675,7 +675,7 @@ export default function Home() {
         </div>
 
         {/* Input - Fixed at bottom */}
-        <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
+        <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0 sticky bottom-0 z-10">
           <ChatInput
             messageCotent={draftMessage}
             onChange={setDraftMessage}
@@ -691,7 +691,7 @@ export default function Home() {
           className={`${canvasWidth} transition-all duration-500 ease-in-out flex flex-col bg-gray-50 shadow-lg overflow-hidden`}
         >
           {/* Canvas Header - Fixed */}
-          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0">
+          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
             <div className="flex items-center gap-3">
               <h2 className="font-bold text-lg text-gray-800">Interactive Canvas</h2>
               {outputCode && (
