@@ -221,7 +221,7 @@ export function Mermaid({
       // Pan mode or no element selected
       if (e.button === 0 && interactionMode === "pan") {
         setIsDragging(true)
-        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - dragStart.y })
         container.style.cursor = "grabbing"
         setAutoFit(false)
       }
@@ -556,13 +556,36 @@ export function Mermaid({
         setWasFixed(false)
         setWasConverted(false)
 
-        // Clear previous content safely
-        try {
-          container.innerHTML = ""
-        } catch (e) {
-          console.warn("Error clearing container:", e)
+        // Enhanced DOM cleanup to prevent removeChild errors
+        const safeCleanContainer = () => {
+          try {
+            // Remove all child nodes safely
+            while (container.firstChild) {
+              try {
+                container.removeChild(container.firstChild)
+              } catch (e) {
+                // If removeChild fails, try alternative cleanup
+                container.innerHTML = ""
+                break
+              }
+            }
+            // Ensure container is completely clean
+            if (container.children.length > 0) {
+              container.innerHTML = ""
+            }
+          } catch (e) {
+            console.warn("Error during container cleanup:", e)
+            // Fallback: force clear with innerHTML
+            try {
+              container.innerHTML = ""
+            } catch (innerError) {
+              console.warn("Fallback cleanup also failed:", innerError)
+            }
+          }
         }
 
+        // Clean container safely
+        safeCleanContainer()
         container.removeAttribute("data-processed")
 
         const isOldSyntax =
@@ -581,7 +604,7 @@ export function Mermaid({
         }
 
         try {
-          // Initialize mermaid with the selected theme
+          // Initialize mermaid with the selected theme - force reinitialize
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: "loose",
@@ -607,6 +630,16 @@ export function Mermaid({
             },
           })
 
+          // Force mermaid to reinitialize completely for theme changes
+          if (typeof mermaid.reinitialize === "function") {
+            mermaid.reinitialize({
+              startOnLoad: false,
+              securityLevel: "loose",
+              theme: selectedTheme,
+              logLevel: "error",
+            })
+          }
+
           const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
           let svg: string
@@ -621,6 +654,7 @@ export function Mermaid({
             setWasFixed(true)
           }
 
+          // Create wrapper with better error handling
           const wrapper = document.createElement("div")
           wrapper.innerHTML = svg
           wrapper.style.transformOrigin = "center center"
@@ -655,19 +689,23 @@ export function Mermaid({
             })
           }
 
+          // Safely append wrapper to container
           try {
-            if (container && container.parentNode) {
+            if (container && container.parentNode && document.contains(container)) {
               container.appendChild(wrapper)
+            } else {
+              console.warn("Container is not in DOM, skipping append")
             }
           } catch (e) {
             console.error("Error appending wrapper:", e)
+            // Try one more cleanup and append
             try {
-              container.innerHTML = ""
-              if (container && container.parentNode) {
+              safeCleanContainer()
+              if (container && container.parentNode && document.contains(container)) {
                 container.appendChild(wrapper)
               }
             } catch (innerError) {
-              console.error("Failed to append after clearing:", innerError)
+              console.error("Failed to append after cleanup:", innerError)
             }
           }
 
@@ -675,6 +713,7 @@ export function Mermaid({
             setTimeout(() => handleFitToScreen(), 100)
           }
 
+          // Add success/conversion messages with safe DOM operations
           if (codeWasFixed || isOldSyntax || wasFixed) {
             const successDiv = document.createElement("div")
             let messageText = "Syntax automatically fixed"
@@ -691,34 +730,25 @@ export function Mermaid({
             const position = screenSize === "mobile" ? "top-2 left-2 right-2" : "top-4 left-4"
             successDiv.className = `absolute ${position} ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
             successDiv.innerHTML = `
-              <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
-              </svg>
-              <span class="flex-1">${messageText}</span>
-            `
+            <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+            </svg>
+            <span class="flex-1">${messageText}</span>
+          `
 
             try {
-              container.appendChild(successDiv)
-              setTimeout(() => {
-                try {
-                  if (container.contains(successDiv)) {
-                    container.removeChild(successDiv)
-                  }
-                } catch (e) {
-                  console.warn("Error removing success message:", e)
-                  // Fallback: re-render without the message
+              if (container && document.contains(container)) {
+                container.appendChild(successDiv)
+                setTimeout(() => {
                   try {
-                    const messages = container.querySelectorAll('[class*="absolute"][class*="border"]')
-                    messages.forEach((msg) => {
-                      if (container.contains(msg)) {
-                        container.removeChild(msg)
-                      }
-                    })
-                  } catch (fallbackError) {
-                    console.warn("Fallback removal also failed:", fallbackError)
+                    if (container && container.contains(successDiv)) {
+                      container.removeChild(successDiv)
+                    }
+                  } catch (e) {
+                    console.warn("Error removing success message:", e)
                   }
-                }
-              }, 5000)
+                }, 5000)
+              }
             } catch (e) {
               console.warn("Error adding success message:", e)
             }
@@ -728,43 +758,46 @@ export function Mermaid({
           const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
           setError(errorMessage)
 
+          // Safe error display
           const errorDiv = document.createElement("div")
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
 
           let errorContent = `
-            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
-            <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
-          `
+          <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
+          <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
+        `
 
           if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
             errorContent += `
-              <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
-                <strong class="block mb-2">Common fixes:</strong>
-                • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
-                • Ensure participant names don't contain spaces or special characters<br>
-                • Verify all connections have proper arrow syntax (--&gt;)<br>
-                • Make sure all brackets and quotes are properly closed
-              </div>
-            `
+            <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+              <strong class="block mb-2">Common fixes:</strong>
+              • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
+              • Ensure participant names don't contain spaces or special characters<br>
+              • Verify all connections have proper arrow syntax (--&gt;)<br>
+              • Make sure all brackets and quotes are properly closed
+            </div>
+          `
           }
 
           const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"
           errorContent += `
-            <div class="flex ${buttonLayout}">
-              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
-                Show Diagram Code
-              </button>
-              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
-                Try Simplified Version
-              </button>
-            </div>
-          `
+          <div class="flex ${buttonLayout}">
+            <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
+              Show Diagram Code
+            </button>
+            <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
+              Try Simplified Version
+            </button>
+          </div>
+        `
 
           errorDiv.innerHTML = errorContent
 
           try {
-            container.innerHTML = ""
-            container.appendChild(errorDiv)
+            safeCleanContainer()
+            if (container && document.contains(container)) {
+              container.appendChild(errorDiv)
+            }
           } catch (e) {
             console.warn("Error adding error message:", e)
           }
@@ -818,14 +851,29 @@ export function Mermaid({
   // Render chart when chart or theme changes
   useEffect(() => {
     if (isClient && chart) {
-      renderChart(chart, theme)
+      // Debounce rapid theme changes
+      const timeoutId = setTimeout(() => {
+        renderChart(chart, theme)
+      }, 100)
+
+      return () => {
+        clearTimeout(timeoutId)
+      }
     }
 
     return () => {
       const container = containerRef.current
       if (container) {
         try {
-          container.innerHTML = ""
+          // Safe cleanup on unmount
+          while (container.firstChild) {
+            try {
+              container.removeChild(container.firstChild)
+            } catch (e) {
+              container.innerHTML = ""
+              break
+            }
+          }
         } catch (e) {
           console.warn("Error cleaning up container:", e)
         }
@@ -835,16 +883,21 @@ export function Mermaid({
 
   const handleThemeChange = useCallback(
     async (newTheme: Theme) => {
+      if (newTheme === theme) return // Prevent unnecessary re-renders
+
       setTheme(newTheme)
       setShowThemeSelector(false)
+
       if (isClient) {
         localStorage.setItem("mermaid-theme", newTheme)
         if (chart) {
+          // Add a small delay to ensure state updates are processed
+          await new Promise((resolve) => setTimeout(resolve, 50))
           await renderChart(chart, newTheme)
         }
       }
     },
-    [isClient, chart, renderChart],
+    [isClient, chart, renderChart, theme],
   )
 
   // Don't render anything on server side
