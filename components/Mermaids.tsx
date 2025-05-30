@@ -503,32 +503,43 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
         container.removeAttribute("data-processed")
 
-        // Pre-validate and clean the code
+        // Pre-validate and clean the code with multiple attempts
         let cleanedCode = ""
+        let codeWasFixed = false
+
         try {
+          // First attempt: normal sanitization
           cleanedCode = sanitizeMermaidCode(chartCode)
+          codeWasFixed = cleanedCode !== chartCode.trim()
           setSanitizedCode(cleanedCode)
         } catch (e) {
-          console.warn("Failed to sanitize code:", e)
-          cleanedCode = createEmergencyFallback()
-          setSanitizedCode(cleanedCode)
-          setWasFixed(true)
+          console.warn("First sanitization failed:", e)
+          try {
+            // Second attempt: create a simplified version
+            cleanedCode = createSimplifiedFromOriginal(chartCode)
+            codeWasFixed = true
+            setSanitizedCode(cleanedCode)
+          } catch (e2) {
+            console.warn("Second sanitization failed:", e2)
+            // Final attempt: emergency fallback
+            cleanedCode = createEmergencyFallback()
+            codeWasFixed = true
+            setSanitizedCode(cleanedCode)
+          }
         }
 
-        // Validate the cleaned code
-        const validation = validateMermaidCode(cleanedCode)
-        if (!validation.isValid) {
-          console.warn("Code validation failed:", validation.errors)
+        // Additional validation before rendering
+        if (!isValidMermaidCode(cleanedCode)) {
+          console.warn("Code validation failed, using fallback")
           cleanedCode = createEmergencyFallback()
+          codeWasFixed = true
           setSanitizedCode(cleanedCode)
-          setWasFixed(true)
         }
 
         const isOldSyntax =
           chartCode.includes("=>") &&
           (chartCode.includes("start:") || chartCode.includes("operation:") || chartCode.includes("condition:"))
 
-        const codeWasFixed = cleanedCode !== chartCode.trim()
         setWasFixed(codeWasFixed && !isOldSyntax)
         setWasConverted(isOldSyntax)
 
@@ -541,6 +552,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         try {
           await initializeMermaidSafely(selectedTheme, screenSize)
           const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+          // Pre-validate with mermaid.parse
+          try {
+            mermaid.parse(cleanedCode)
+          } catch (parseError) {
+            throw new Error(`Parse validation failed: ${parseError}`)
+          }
+
           const result = await mermaid.render(id, cleanedCode)
           svg = result.svg
           renderSuccess = true
@@ -553,6 +572,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             const simplifiedCode = createSimplifiedDiagram(cleanedCode)
             await initializeMermaidSafely(selectedTheme, screenSize)
             const id = `mermaid-simplified-${Date.now()}`
+
+            // Pre-validate simplified code
+            try {
+              mermaid.parse(simplifiedCode)
+            } catch (parseError) {
+              throw new Error(`Simplified parse validation failed: ${parseError}`)
+            }
+
             const result = await mermaid.render(id, simplifiedCode)
             svg = result.svg
             renderSuccess = true
@@ -566,6 +593,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               const fallbackCode = createEmergencyFallback()
               await initializeMermaidSafely(selectedTheme, screenSize)
               const id = `mermaid-fallback-${Date.now()}`
+
               const result = await mermaid.render(id, fallbackCode)
               svg = result.svg
               renderSuccess = true
@@ -1368,64 +1396,79 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   )
 }
 
-function createSimplifiedDiagram(originalCode: string): string {
-  const lines = originalCode
+// Helper function to validate Mermaid code structure
+function isValidMermaidCode(code: string): boolean {
+  if (!code || typeof code !== "string") return false
+
+  const lines = code
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-
-  if (lines.length === 0) {
-    return createEmergencyFallback()
-  }
+  if (lines.length === 0) return false
 
   const firstLine = lines[0].toLowerCase()
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+  ]
 
-  try {
-    if (firstLine.startsWith("sequencediagram")) {
-      return `sequenceDiagram
-        participant A as User
-        participant B as System
-        A->>B: Request
-        B-->>A: Response`
-    } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
-      return `graph TD
-        A[Start] --> B[Process]
-        B --> C[End]
-        style A fill:#e3f2fd
-        style B fill:#f3e5f5
-        style C fill:#e8f5e8`
-    } else if (firstLine.startsWith("journey")) {
-      return `journey
-        title User Journey
-        section Task
-          Step 1: 3: User
-          Step 2: 4: User`
-    } else if (firstLine.startsWith("classdiagram")) {
-      return `classDiagram
-        class User {
-          +String name
-          +login()
-        }
-        class System {
-          +process()
-        }
-        User --> System`
-    } else if (firstLine.startsWith("erdiagram")) {
-      return `erDiagram
-        USER {
-            int id PK
-            string name
-        }
-        ORDER {
-            int id PK
-            int user_id FK
-        }
-        USER ||--o{ ORDER : places`
-    } else {
-      return createEmergencyFallback()
+  if (!validStarts.some((start) => firstLine.startsWith(start))) return false
+
+  // Check for common syntax errors
+  for (const line of lines) {
+    // Check for incomplete brackets
+    if (line.includes("[") && !line.includes("]")) return false
+    if (line.includes("{") && !line.includes("}")) return false
+    if (line.includes("(") && !line.includes(")")) return false
+
+    // Check for malformed arrows
+    if (line.match(/[a-zA-Z0-9]-->[a-zA-Z0-9]/)) return false
+    if (line.match(/[a-zA-Z0-9]->[a-zA-Z0-9]/)) return false
+  }
+
+  return true
+}
+
+// Helper function to create simplified version from original
+function createSimplifiedFromOriginal(originalCode: string): string {
+  const firstLine = originalCode.split("\n")[0].trim().toLowerCase()
+
+  if (firstLine.includes("sequence")) {
+    return `sequenceDiagram
+    participant A as User
+    participant B as System
+    A->>B: Request
+    B-->>A: Response`
+  } else if (firstLine.includes("class")) {
+    return `classDiagram
+    class User {
+        +String name
+        +login()
     }
-  } catch (e) {
-    return createEmergencyFallback()
+    class System {
+        +process()
+    }
+    User --> System`
+  } else if (firstLine.includes("journey")) {
+    return `journey
+    title User Journey
+    section Task
+        Step 1: 3: User
+        Step 2: 4: User`
+  } else {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8`
   }
 }
 
@@ -1449,4 +1492,10 @@ function createFallbackDiagram(originalCode: string, errorMessage: string): stri
   subgraph Error Message
   ${errorMessage.substring(0, 100)}...
   end`
+}
+
+// Helper function to create a simplified diagram
+function createSimplifiedDiagram(code: string): string {
+  return `graph TD
+    A[Start] --> B[End]`
 }
