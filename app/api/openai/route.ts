@@ -48,35 +48,29 @@ CRITICAL RULES:
 1. NEVER include explanatory text before or after the diagram code
 2. ALWAYS start your response directly with the diagram type keyword
 3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
-4. NEVER place nodes without connecting them to other nodes
-5. For journey diagrams, ALWAYS use proper task format: "Task name: score: Actor"
+4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
+5. NEVER start a line with just an arrow (-->> or ->>)
 
-FLOWCHART SYNTAX EXAMPLES:
-CORRECT:
-graph TD
-    A[Start] --> B[Process]
-    B --> C[End]
+SEQUENCE DIAGRAM SYNTAX RULES:
+- CORRECT: "ParticipantA ->> ParticipantB: Message"
+- CORRECT: "ParticipantA -->> ParticipantB: Response"
+- INCORRECT: "->> ParticipantB: Message" (missing sender)
+- INCORRECT: "-->> ParticipantB: Response" (missing sender)
 
-INCORRECT:
-graph TD
-    A[Start]
-    B[Process]
-    C[End]
+VALID SEQUENCE DIAGRAM EXAMPLE:
+sequenceDiagram
+    participant Client
+    participant API
+    participant Database
+    
+    Client ->> API: Request data
+    API ->> Database: Query
+    Database -->> API: Results
+    API -->> Client: Response
 
-JOURNEY SYNTAX EXAMPLES:
-CORRECT:
-journey
-    title My Journey
-    section Section 1
-      Task 1: 5: Me
-      Task 2: 3: Me
-
-INCORRECT:
-journey
-    title My Journey
-    section Section 1
-      Task 1
-      Task 2
+FLOWCHART SYNTAX RULES:
+- CORRECT: "A[Start] --> B[Process] --> C[End]"
+- INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
 
 RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!`,
       }
@@ -92,7 +86,7 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!`,
         model,
         messages: [systemMessage, ...messages],
         stream: !isSummaryRequest,
-        temperature: 0.2, // Lower temperature for more consistent output
+        temperature: 0.1, // Very low temperature for consistent syntax
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })

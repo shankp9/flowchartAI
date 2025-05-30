@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
-import { Copy, Palette, AlertCircle, Code } from "lucide-react"
+import { Copy, Palette, AlertCircle, Code, CheckCircle } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
 
@@ -23,6 +23,7 @@ export function Mermaid({ chart }: MermaidProps) {
   const [error, setError] = useState<string>("")
   const [showCode, setShowCode] = useState(false)
   const [sanitizedCode, setSanitizedCode] = useState("")
+  const [wasFixed, setWasFixed] = useState(false)
 
   // Initialize client-side state
   useEffect(() => {
@@ -37,7 +38,7 @@ export function Mermaid({ chart }: MermaidProps) {
       startOnLoad: false,
       securityLevel: "loose",
       theme: "default",
-      logLevel: "error", // Reduce console noise
+      logLevel: "error",
       flowchart: {
         useMaxWidth: true,
         htmlLabels: true,
@@ -59,7 +60,6 @@ export function Mermaid({ chart }: MermaidProps) {
   const copyToClipboard = useCallback((text: string) => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).catch(() => {
-        // Fallback for older browsers
         const el = document.createElement("textarea")
         el.value = text
         el.style.position = "absolute"
@@ -105,20 +105,23 @@ export function Mermaid({ chart }: MermaidProps) {
       try {
         setIsRendering(true)
         setError("")
+        setWasFixed(false)
 
         // Clear previous content safely
         while (container.firstChild) {
           container.removeChild(container.firstChild)
         }
 
-        // Remove any existing data attributes
         container.removeAttribute("data-processed")
 
         // Sanitize and fix common syntax errors
         const cleanedCode = sanitizeMermaidCode(chartCode)
         setSanitizedCode(cleanedCode)
 
-        // Validate and clean the chart code
+        // Check if the code was modified during sanitization
+        const codeWasFixed = cleanedCode !== chartCode.trim()
+        setWasFixed(codeWasFixed)
+
         if (!cleanedCode) {
           throw new Error("Empty diagram code")
         }
@@ -128,7 +131,7 @@ export function Mermaid({ chart }: MermaidProps) {
           startOnLoad: false,
           securityLevel: "loose",
           theme: selectedTheme,
-          logLevel: "error", // Reduce console noise
+          logLevel: "error",
           flowchart: {
             useMaxWidth: true,
             htmlLabels: true,
@@ -162,72 +165,39 @@ export function Mermaid({ chart }: MermaidProps) {
         wrapper.style.alignItems = "center"
 
         container.appendChild(wrapper)
+
+        // Show success message if code was fixed
+        if (codeWasFixed) {
+          const successDiv = document.createElement("div")
+          successDiv.className =
+            "absolute top-4 left-4 bg-green-50 border border-green-200 rounded-md p-2 flex items-center gap-2 text-green-700 text-xs z-10"
+          successDiv.innerHTML = `
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+            </svg>
+            <span>Syntax automatically fixed</span>
+          `
+          container.appendChild(successDiv)
+
+          // Auto-hide the success message after 3 seconds
+          setTimeout(() => {
+            if (successDiv.parentNode) {
+              successDiv.parentNode.removeChild(successDiv)
+            }
+          }, 3000)
+        }
       } catch (error) {
         console.error("Mermaid rendering error:", error)
         setError(error instanceof Error ? error.message : "Unknown rendering error")
-
-        // Try to fix common syntax errors and retry
-        try {
-          const fixedCode = fixMermaidSyntax(chartCode)
-          if (fixedCode !== chartCode) {
-            setSanitizedCode(fixedCode)
-
-            // Initialize mermaid with current theme
-            mermaid.initialize({
-              startOnLoad: false,
-              securityLevel: "loose",
-              theme: selectedTheme,
-              logLevel: "error",
-              flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true,
-                curve: "basis",
-              },
-            })
-
-            // Generate unique ID for this render
-            const id = `mermaid-fixed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-            // Try to render with fixed code
-            const { svg } = await mermaid.render(id, fixedCode)
-
-            // Create a wrapper div for the SVG
-            const wrapper = document.createElement("div")
-            wrapper.innerHTML = svg
-            wrapper.style.width = "100%"
-            wrapper.style.height = "100%"
-            wrapper.style.display = "flex"
-            wrapper.style.justifyContent = "center"
-            wrapper.style.alignItems = "center"
-
-            // Clear previous content
-            while (container.firstChild) {
-              container.removeChild(container.firstChild)
-            }
-
-            container.appendChild(wrapper)
-
-            // Show a warning that we fixed the code
-            const warningDiv = document.createElement("div")
-            warningDiv.className = "text-amber-500 p-2 text-xs bg-amber-50 rounded-md absolute top-4 left-4"
-            warningDiv.innerHTML = "⚠️ Fixed syntax errors in diagram"
-            container.appendChild(warningDiv)
-
-            return
-          }
-        } catch (fixError) {
-          // If fixing also fails, show the original error
-          console.error("Failed to fix syntax:", fixError)
-        }
 
         // Display error message in container
         const errorDiv = document.createElement("div")
         errorDiv.className = "text-red-500 p-4 text-center max-w-md mx-auto"
         errorDiv.innerHTML = `
           <div class="font-semibold mb-2">Diagram Rendering Error</div>
-          <div class="text-sm">${error instanceof Error ? error.message : "Unknown error"}</div>
-          <div class="text-xs mt-2 text-gray-500">Please check your diagram syntax</div>
-          <button class="mt-4 px-3 py-1 bg-blue-100 text-blue-700 rounded-md text-xs hover:bg-blue-200 transition-colors" id="show-code-btn">
+          <div class="text-sm mb-4">${error instanceof Error ? error.message : "Unknown error"}</div>
+          <div class="text-xs text-gray-500 mb-4">The diagram syntax contains errors that couldn't be automatically fixed.</div>
+          <button class="px-3 py-1 bg-blue-100 text-blue-700 rounded-md text-xs hover:bg-blue-200 transition-colors" id="show-code-btn">
             Show Diagram Code
           </button>
         `
@@ -246,78 +216,6 @@ export function Mermaid({ chart }: MermaidProps) {
     },
     [isClient],
   )
-
-  // Function to fix common Mermaid syntax errors
-  const fixMermaidSyntax = (code: string): string => {
-    if (!code) return ""
-
-    // Trim whitespace
-    let fixed = code.trim()
-
-    // Check if it's a flowchart
-    if (fixed.startsWith("graph") || fixed.startsWith("flowchart")) {
-      const lines = fixed.split("\n")
-      const fixedLines = []
-      let lastNodeId = ""
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim()
-
-        // Skip empty lines
-        if (!line) continue
-
-        // First line is the graph declaration
-        if (i === 0) {
-          fixedLines.push(line)
-          continue
-        }
-
-        // Check if this line defines a node without connections
-        const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/
-        const nodeMatch = line.match(nodeDefRegex)
-
-        if (nodeMatch) {
-          const nodeId = nodeMatch[1]
-
-          // If we have a previous node, connect them
-          if (lastNodeId && !line.includes("-->") && !line.includes("---")) {
-            fixedLines.push(`${lastNodeId} --> ${nodeId}${nodeMatch[2]}`)
-          } else {
-            fixedLines.push(line)
-          }
-
-          lastNodeId = nodeId
-        } else if (line.includes("[") && !line.includes("-->") && !line.includes("---")) {
-          // This might be a node definition with spaces
-          const parts = line.split(/\s+/)
-          if (parts.length >= 2) {
-            const potentialNodeId = parts[0]
-            // If we have a previous node, try to connect them
-            if (lastNodeId) {
-              fixedLines.push(`${lastNodeId} --> ${line}`)
-            } else {
-              fixedLines.push(line)
-            }
-            lastNodeId = potentialNodeId
-          } else {
-            fixedLines.push(line)
-          }
-        } else {
-          fixedLines.push(line)
-
-          // Try to extract node IDs from connections
-          const connectionMatch = line.match(/([A-Za-z0-9_-]+)\s*-->.+/)
-          if (connectionMatch) {
-            lastNodeId = connectionMatch[1]
-          }
-        }
-      }
-
-      fixed = fixedLines.join("\n")
-    }
-
-    return fixed
-  }
 
   // Render chart when chart or theme changes
   useEffect(() => {
@@ -378,12 +276,14 @@ export function Mermaid({ chart }: MermaidProps) {
           {label}
         </button>
         <button
-          className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={`flex items-center gap-1 px-2 py-1 text-xs border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors ${
+            wasFixed ? "border-green-300 text-green-700" : "border-gray-300"
+          }`}
           onClick={() => setShowCode(!showCode)}
           title={showCode ? "Hide code" : "Show code"}
         >
-          <Code className="h-3 w-3" />
-          {showCode ? "Hide Code" : "Show Code"}
+          {wasFixed ? <CheckCircle className="h-3 w-3" /> : <Code className="h-3 w-3" />}
+          {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : "Show Code"}
         </button>
       </div>
 
@@ -391,7 +291,12 @@ export function Mermaid({ chart }: MermaidProps) {
       {showCode && (
         <div className="absolute inset-0 bg-gray-900 text-gray-100 p-4 z-20 overflow-auto">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-sm font-medium">Mermaid Diagram Code</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">Mermaid Diagram Code</h3>
+              {wasFixed && (
+                <span className="px-2 py-1 bg-green-800 text-green-100 rounded text-xs">Automatically Fixed</span>
+              )}
+            </div>
             <div className="flex gap-2">
               <button
                 className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 hover:bg-gray-700 transition-colors"
@@ -408,6 +313,16 @@ export function Mermaid({ chart }: MermaidProps) {
               </button>
             </div>
           </div>
+
+          {wasFixed && (
+            <div className="mb-4 p-3 bg-green-900 border border-green-700 rounded-md">
+              <div className="text-green-100 text-xs font-medium mb-2">Syntax Issues Fixed:</div>
+              <div className="text-green-200 text-xs">
+                • Added missing participant to sequence diagram arrow • Ensured proper Mermaid syntax compliance
+              </div>
+            </div>
+          )}
+
           <pre className="text-xs font-mono bg-gray-800 p-4 rounded-md overflow-auto">{sanitizedCode || chart}</pre>
         </div>
       )}

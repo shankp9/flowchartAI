@@ -25,13 +25,167 @@ export function sanitizeMermaidCode(code: string): string {
   // Remove markdown code block markers if present
   sanitized = sanitized.replace(/^```mermaid\s*/i, "").replace(/```\s*$/i, "")
 
-  // Check if it's a flowchart and fix common syntax errors
-  if (sanitized.startsWith("graph") || sanitized.startsWith("flowchart")) {
-    // Split into lines for processing
+  // Fix sequence diagram syntax errors
+  if (sanitized.startsWith("sequenceDiagram")) {
+    const lines = sanitized.split("\n")
+    const processedLines = []
+    const participants = new Set<string>()
+
+    // First pass: collect all participants
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+      if (!trimmedLine || trimmedLine.startsWith("sequenceDiagram")) continue
+
+      // Extract participants from arrows
+      const arrowPatterns = [
+        /^(\w+)\s*->>?\+?\s*(\w+):/, // A->>B: or A->B:
+        /^(\w+)\s*-->>?\+?\s*(\w+):/, // A-->>B: or A-->>B:
+        /^(\w+)\s*-x\s*(\w+):/, // A-xB:
+        /^(\w+)\s*--x\s*(\w+):/, // A--xB:
+      ]
+
+      for (const pattern of arrowPatterns) {
+        const match = trimmedLine.match(pattern)
+        if (match) {
+          participants.add(match[1])
+          participants.add(match[2])
+        }
+      }
+
+      // Extract from participant declarations
+      const participantMatch = trimmedLine.match(/^participant\s+(\w+)/)
+      if (participantMatch) {
+        participants.add(participantMatch[1])
+      }
+    }
+
+    // Second pass: process lines and fix syntax errors
+    let lastParticipant = ""
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Skip empty lines
+      if (!line) continue
+
+      // Keep the sequenceDiagram declaration
+      if (line.startsWith("sequenceDiagram")) {
+        processedLines.push(line)
+        continue
+      }
+
+      // Keep participant declarations, notes, and other valid statements
+      if (
+        line.startsWith("participant") ||
+        line.startsWith("note") ||
+        line.startsWith("activate") ||
+        line.startsWith("deactivate") ||
+        line.startsWith("loop") ||
+        line.startsWith("end") ||
+        line.startsWith("alt") ||
+        line.startsWith("else") ||
+        line.startsWith("opt") ||
+        line.startsWith("par") ||
+        line.startsWith("and") ||
+        line.startsWith("rect") ||
+        line.startsWith("autonumber") ||
+        line.startsWith("title")
+      ) {
+        processedLines.push(line)
+        continue
+      }
+
+      // Fix arrows that start without a participant (missing sender)
+      if (line.match(/^(--?>>?\+?|--?x)\s*\w+:/)) {
+        // This line starts with an arrow but no sender
+        // Use the last participant or try to infer from context
+        if (lastParticipant) {
+          const fixedLine = `${lastParticipant} ${line}`
+          processedLines.push(fixedLine)
+
+          // Extract the receiver for next iteration
+          const receiverMatch = fixedLine.match(/--?>>?\+?\s*(\w+):/)
+          if (receiverMatch) {
+            lastParticipant = receiverMatch[1]
+          }
+        } else {
+          // If no last participant, try to use the first available participant
+          const firstParticipant = Array.from(participants)[0]
+          if (firstParticipant) {
+            const fixedLine = `${firstParticipant} ${line}`
+            processedLines.push(fixedLine)
+
+            // Extract the receiver for next iteration
+            const receiverMatch = fixedLine.match(/--?>>?\+?\s*(\w+):/)
+            if (receiverMatch) {
+              lastParticipant = receiverMatch[1]
+            }
+          } else {
+            // Skip this malformed line
+            continue
+          }
+        }
+        continue
+      }
+
+      // Process normal arrow lines
+      const arrowPatterns = [
+        /^(\w+)\s*(->>?\+?)\s*(\w+):\s*(.+)$/, // A->>B: message
+        /^(\w+)\s*(-->>?\+?)\s*(\w+):\s*(.+)$/, // A-->>B: message
+        /^(\w+)\s*(-x)\s*(\w+):\s*(.+)$/, // A-xB: message
+        /^(\w+)\s*(--x)\s*(\w+):\s*(.+)$/, // A--xB: message
+      ]
+
+      let matched = false
+      for (const pattern of arrowPatterns) {
+        const match = line.match(pattern)
+        if (match) {
+          const [, sender, arrow, receiver, message] = match
+          processedLines.push(`${sender} ${arrow} ${receiver}: ${message}`)
+          lastParticipant = receiver
+          matched = true
+          break
+        }
+      }
+
+      // If no pattern matched, try to fix common issues
+      if (!matched) {
+        // Check if it's a malformed arrow line
+        if (line.includes(">>") || line.includes("->") || line.includes("-x")) {
+          // Try to extract components and fix
+          const parts = line.split(/\s*(->>?\+?|-->>?\+?|-x|--x)\s*/)
+          if (parts.length >= 3) {
+            const sender = parts[0] || lastParticipant || Array.from(participants)[0] || "Unknown"
+            const arrow = parts[1]
+            const rest = parts.slice(2).join("")
+
+            if (rest.includes(":")) {
+              const [receiver, ...messageParts] = rest.split(":")
+              const message = messageParts.join(":").trim()
+              if (receiver && message) {
+                processedLines.push(`${sender} ${arrow} ${receiver.trim()}: ${message}`)
+                lastParticipant = receiver.trim()
+                continue
+              }
+            }
+          }
+        }
+
+        // If we still can't fix it, skip the line or add it as-is if it looks valid
+        if (line.length > 0 && !line.includes(">>") && !line.includes("->")) {
+          processedLines.push(line)
+        }
+      }
+    }
+
+    sanitized = processedLines.join("\n")
+  }
+
+  // Fix flowchart syntax errors
+  else if (sanitized.startsWith("graph") || sanitized.startsWith("flowchart")) {
     const lines = sanitized.split("\n")
     const processedLines = []
 
-    // Process each line
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
 
@@ -48,7 +202,7 @@ export function sanitizeMermaidCode(code: string): string {
       const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/
       const nodeMatch = line.match(nodeDefRegex)
 
-      // If it's just a node definition without connections, skip it or connect it
+      // If it's just a node definition without connections, connect it to previous node
       if (nodeMatch && i > 1) {
         // Look for previous node to connect to
         let prevNodeId = null
@@ -61,12 +215,17 @@ export function sanitizeMermaidCode(code: string): string {
             prevNodeId = prevNodeMatch[1]
             break
           }
+          // Also check for connections that end with a node
+          const connectionMatch = prevLine.match(/-->\s*([A-Za-z0-9_-]+)/)
+          if (connectionMatch) {
+            prevNodeId = connectionMatch[1]
+            break
+          }
         }
 
         // If we found a previous node, connect this node to it
         if (prevNodeId) {
-          processedLines.push(`${prevNodeId} --> ${nodeMatch[1]}`)
-          processedLines.push(line)
+          processedLines.push(`${prevNodeId} --> ${nodeMatch[1]}${nodeMatch[2]}`)
         } else {
           processedLines.push(line)
         }
@@ -78,7 +237,7 @@ export function sanitizeMermaidCode(code: string): string {
         if (parts.length >= 2) {
           const firstNodeId = parts[0]
           const secondNodeId = parts[1].split("[")[0]
-          if (firstNodeId && secondNodeId) {
+          if (firstNodeId && secondNodeId && firstNodeId !== secondNodeId) {
             processedLines.push(`${firstNodeId} --> ${parts.slice(1).join(" ")}`)
           } else {
             processedLines.push(line)
@@ -95,7 +254,7 @@ export function sanitizeMermaidCode(code: string): string {
   }
 
   // Fix journey diagram syntax
-  if (sanitized.startsWith("journey")) {
+  else if (sanitized.startsWith("journey")) {
     const lines = sanitized.split("\n")
     const processedLines = []
 
@@ -105,18 +264,30 @@ export function sanitizeMermaidCode(code: string): string {
       // Skip empty lines
       if (!line) continue
 
-      // First line is the journey declaration
-      if (i === 0 || line.startsWith("journey") || line.startsWith("title") || line.startsWith("section")) {
+      // Keep journey declaration, title, and section headers
+      if (line.startsWith("journey") || line.startsWith("title") || line.startsWith("section")) {
         processedLines.push(line)
         continue
       }
 
       // Check if this line is a task without proper format
-      if (!line.includes(":")) {
+      if (!line.includes(":") || (line.includes(":") && line.split(":").length < 3)) {
         // Try to convert it to proper task format
-        processedLines.push(`  ${line}: 3: Me`)
+        const taskName = line.replace(/:/g, "").trim()
+        if (taskName) {
+          processedLines.push(`  ${taskName}: 3: Me`)
+        }
       } else {
-        processedLines.push(line)
+        // Check if it has the right format (task: score: actor)
+        const parts = line.split(":")
+        if (parts.length >= 3) {
+          processedLines.push(line)
+        } else if (parts.length === 2) {
+          // Missing actor, add default
+          processedLines.push(`${line}: Me`)
+        } else {
+          processedLines.push(line)
+        }
       }
     }
 
