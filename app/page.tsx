@@ -79,6 +79,10 @@ export default function Home() {
   const [retryHistory, setRetryHistory] = useState<string[]>([])
   const [isRetrying, setIsRetrying] = useState(false)
 
+  // Add this after the existing state declarations (around line 60)
+  const [currentTheme, setCurrentTheme] = useState<"default" | "neutral" | "dark" | "forest" | "base">("default")
+  const [showThemeSelector, setShowThemeSelector] = useState(false)
+
   // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatScrollContainerRef = useRef<HTMLDivElement>(null)
@@ -107,6 +111,31 @@ export default function Home() {
       setCanvasVisible(true)
     }
   }, [outputCode, canvasVisible])
+
+  // Add this useEffect after the existing useEffect hooks (around line 90)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("mermaid-theme")
+      if (savedTheme && ["default", "neutral", "dark", "forest", "base"].includes(savedTheme)) {
+        setCurrentTheme(savedTheme as any)
+      }
+    }
+  }, [])
+
+  // Add this useEffect after the theme loading useEffect
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showThemeSelector) {
+        const target = event.target as Element
+        if (!target.closest("[data-theme-selector]")) {
+          setShowThemeSelector(false)
+        }
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showThemeSelector])
 
   // Calculate panel widths based on visibility
   const getPanelWidths = () => {
@@ -508,6 +537,15 @@ export default function Home() {
     }
   }, [draftMessage, messages, handleSubmit])
 
+  // Add this after the toggleCanvasVisibility function (around line 450)
+  const handleThemeChange = (newTheme: "default" | "neutral" | "dark" | "forest" | "base") => {
+    setCurrentTheme(newTheme)
+    setShowThemeSelector(false)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mermaid-theme", newTheme)
+    }
+  }
+
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
     if (chatVisible && canvasVisible) {
@@ -768,6 +806,73 @@ export default function Home() {
                     </button>
                   </div>
 
+                  {/* Theme Selector */}
+                  <div className="relative" data-theme-selector>
+                    <button
+                      className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
+                      onClick={() => setShowThemeSelector(!showThemeSelector)}
+                      title="Change Theme"
+                    >
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"
+                        />
+                      </svg>
+                      <span>{currentTheme.charAt(0).toUpperCase() + currentTheme.slice(1)}</span>
+                      <svg
+                        className={`h-3 w-3 transition-transform ${showThemeSelector ? "rotate-180" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {showThemeSelector && (
+                      <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48">
+                        {["default", "neutral", "dark", "forest", "base"].map((theme) => (
+                          <button
+                            key={theme}
+                            className={`w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors ${
+                              currentTheme === theme ? "bg-blue-50 text-blue-700" : ""
+                            }`}
+                            onClick={() => handleThemeChange(theme as any)}
+                          >
+                            <div
+                              className={`w-4 h-4 rounded border-2 ${
+                                theme === "dark"
+                                  ? "bg-gray-900 border-gray-600"
+                                  : theme === "forest"
+                                    ? "bg-green-50 border-green-300"
+                                    : theme === "neutral"
+                                      ? "bg-gray-50 border-gray-300"
+                                      : theme === "base"
+                                        ? "bg-slate-100 border-slate-300"
+                                        : "bg-white border-gray-300"
+                              }`}
+                            />
+                            <div className="flex-1 text-left">
+                              <div className="font-medium">{theme.charAt(0).toUpperCase() + theme.slice(1)}</div>
+                            </div>
+                            {currentTheme === theme && (
+                              <svg className="h-3 w-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Fullscreen Toggle */}
                   <button
                     className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
@@ -793,6 +898,7 @@ export default function Home() {
                 toggleChatVisibility={toggleChatVisibility}
                 toggleCanvasVisibility={toggleCanvasVisibility}
                 chatVisible={chatVisible}
+                theme={currentTheme}
               />
             ) : (
               <div className="h-full flex items-center justify-center">
