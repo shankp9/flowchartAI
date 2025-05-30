@@ -861,12 +861,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         />
       )}
 
-      {/* Floating Compact Controls */}
+      {/* Floating Compact Controls - Static positioning */}
       <div className={`absolute ${screenSize === "mobile" ? "top-2 right-2" : "top-4 right-4"} z-20`}>
         {/* Main Control Button */}
         <div className="flex flex-col gap-2">
           <button
-            className="w-10 h-10 bg-white/95 backdrop-blur-lg rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center hover:bg-gray-50 transition-all duration-200"
+            className="w-10 h-10 bg-white/95 rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center hover:bg-gray-50 transition-all duration-200"
             onClick={() => setShowControls(!showControls)}
             title="Toggle Controls"
           >
@@ -875,7 +875,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zM12 13a1 1 0 110-2 1 1 0 010 
+                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zM12 13a1 1 0 110-2 1 1 0
                 2zM12 20a1 1 0 110-2 1 1 0 010 2z"
               />
             </svg>
@@ -883,7 +883,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
           {/* Expanded Controls Panel */}
           {showControls && (
-            <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-xl border border-gray-200/50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+            <div className="bg-white/95 rounded-xl shadow-xl border border-gray-200/50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
               {/* Quick Action Buttons */}
               <div className="p-3 border-b border-gray-100">
                 <div className="grid grid-cols-3 gap-2">
@@ -911,7 +911,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 </div>
               </div>
 
-              {/* Zoom Controls */}
+              {/* Rest of the controls remain the same... */}
               <div className="p-3 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <button
@@ -936,6 +936,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 </div>
               </div>
 
+              {/* Continue with all other control sections exactly as they were... */}
               {/* Interaction Mode Toggle */}
               <div className="p-3 border-b border-gray-100">
                 <div className="flex gap-1">
@@ -1116,12 +1117,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         </div>
       </div>
 
-      {/* Secondary Floating Controls */}
+      {/* Secondary Floating Controls - Static positioning */}
       <div className={`absolute ${screenSize === "mobile" ? "bottom-4 right-2" : "bottom-6 right-4"} z-20`}>
         <div className="flex flex-col gap-2">
           {/* Code Toggle */}
           <button
-            className={`w-10 h-10 backdrop-blur-lg rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center transition-all duration-200 ${
+            className={`w-10 h-10 rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center transition-all duration-200 ${
               wasFixed
                 ? "bg-green-50 border-green-200 text-green-700"
                 : wasConverted
@@ -1144,7 +1145,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
           {/* Grid Toggle */}
           <button
-            className={`w-10 h-10 backdrop-blur-lg rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center transition-all duration-200 ${
+            className={`w-10 h-10 rounded-full shadow-lg border border-gray-200/50 flex items-center justify-center transition-all duration-200 ${
               showGrid ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white/95 hover:bg-gray-50"
             }`}
             onClick={() => setShowGrid(!showGrid)}
@@ -1157,10 +1158,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         </div>
       </div>
 
-      {/* Pan Indicator - Only show when panned */}
+      {/* Pan Indicator - Static positioning */}
       {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && (
         <div className={`absolute ${screenSize === "mobile" ? "top-2 left-2" : "top-4 left-4"} z-20`}>
-          <div className="bg-white/95 backdrop-blur-lg rounded-lg shadow-lg border border-gray-200/50 px-3 py-2">
+          <div className="bg-white/95 rounded-lg shadow-lg border border-gray-200/50 px-3 py-2">
             <div className="flex items-center gap-2 text-xs text-gray-600">
               <Move className="h-3 w-3" />
               <span className="font-mono">
@@ -1262,21 +1263,9 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           cursor:
             interactionMode === "select" ? "crosshair" : zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
           minHeight: "300px",
-          touchAction: "none", // Prevent default touch behaviors
+          touchAction: "none",
           position: "relative",
-          isolation: "isolate", // Create new stacking context
-        }}
-        onMouseEnter={() => {
-          // Only auto-show controls on hover when in fullscreen mode
-          if (isFullscreen) {
-            setShowControls(true)
-          }
-        }}
-        onMouseLeave={() => {
-          // Only auto-hide controls when not in fullscreen mode and not manually opened
-          if (!isFullscreen) {
-            setShowControls(false)
-          }
+          isolation: "isolate",
         }}
       >
         <div
