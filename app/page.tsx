@@ -417,9 +417,15 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
         {/* Chat Header */}
         <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
           {!chatCollapsed && (
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-blue-600" />
-              <h2 className="font-semibold">AI Chat</h2>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                <span className="font-bold text-lg">FlowchartAI</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                <span>AI Chat</span>
+              </div>
             </div>
           )}
           <Button variant="ghost" size="sm" onClick={() => setChatCollapsed(!chatCollapsed)} className="h-8 w-8 p-0">
