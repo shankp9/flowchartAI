@@ -7,11 +7,19 @@ import { Suspense } from "react"
 import { Mona_Sans as FontSans } from "next/font/google"
 import { cn } from "@/lib/utils"
 import { SiteHeader } from "@/components/SiteHeader"
+import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata = {
-  title: "FlowchartAI",
+  title: "FlowchartAI - AI-Powered Diagram Generator",
   description:
-    "Draw flowchart, sequence diagram, class diagram, user journey, gantt, C4C diagram with nature language.",
+    "Create professional flowcharts, sequence diagrams, class diagrams, user journeys, gantt charts, and C4C diagrams using natural language with AI.",
+  keywords: ["flowchart", "diagram", "AI", "mermaid", "sequence diagram", "class diagram"],
+  authors: [{ name: "FlowchartAI Team" }],
+  openGraph: {
+    title: "FlowchartAI - AI-Powered Diagram Generator",
+    description: "Create professional diagrams using natural language with AI",
+    type: "website",
+  },
     generator: 'v0.dev'
 }
 
@@ -27,15 +35,21 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body
-        className={cn("min-h-screen bg-white font-sans text-slate-900 antialiased flex flex-col", fontSans.variable)}
-      >
-        <Suspense fallback={<div>Loading...</div>}>
-          <SiteHeader />
-          {children}
-        </Suspense>
-        <Analytics />
+    <html lang="en" suppressHydrationWarning>
+      <body className={cn("min-h-screen bg-background font-sans antialiased flex flex-col", fontSans.variable)}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          <Suspense
+            fallback={
+              <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            }
+          >
+            <SiteHeader />
+            {children}
+          </Suspense>
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )
