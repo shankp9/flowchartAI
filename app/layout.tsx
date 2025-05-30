@@ -6,7 +6,7 @@ import { Analytics } from "@vercel/analytics/react"
 import { SiteHeader } from "@/components/SiteHeader"
 import { Suspense } from "react"
 import { APP_CONFIG } from "@/lib/constants"
-import { Toaster } from "@/components/ui/sonner" // For better notifications
+import { Toaster } from "sonner" // For better notifications
 
 const inter = Inter({
   subsets: ["latin"],
