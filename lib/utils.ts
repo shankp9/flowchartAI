@@ -16,18 +16,100 @@ export function serializeCode(code: string): string {
 }
 
 export function parseCodeFromMessage(message: string): string {
-  const codeBlockRegex = /```(?:mermaid)?\n([\s\S]*?)\n```/g
-  const match = codeBlockRegex.exec(message)
-  return match ? match[1].trim() : message.trim()
+  // Try multiple patterns to extract Mermaid code
+  const patterns = [/```mermaid\n([\s\S]*?)\n```/g, /```\n([\s\S]*?)\n```/g, /```([\s\S]*?)```/g, /`([\s\S]*?)`/g]
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(message)
+    if (match && match[1]) {
+      const code = match[1].trim()
+      if (code && isValidMermaidStart(code)) {
+        return code
+      }
+    }
+  }
+
+  // If no code blocks found, check if the entire message is Mermaid code
+  const trimmed = message.trim()
+  if (isValidMermaidStart(trimmed)) {
+    return trimmed
+  }
+
+  // Last resort: try to extract any valid Mermaid syntax
+  const lines = message
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const validLines = []
+  let foundStart = false
+
+  for (const line of lines) {
+    if (isValidMermaidStart(line)) {
+      foundStart = true
+      validLines.push(line)
+    } else if (foundStart && isValidMermaidLine(line)) {
+      validLines.push(line)
+    } else if (foundStart) {
+      // Stop at first invalid line after finding start
+      break
+    }
+  }
+
+  return validLines.length > 0 ? validLines.join("\n") : ""
 }
 
-// Enhanced validation function with detailed error reporting
-export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+function isValidMermaidStart(code: string): boolean {
+  const firstLine = code.split("\n")[0].trim().toLowerCase()
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+    "gitgraph",
+    "mindmap",
+    "timeline",
+    "sankey",
+  ]
+  return validStarts.some((start) => firstLine.startsWith(start))
+}
+
+function isValidMermaidLine(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return true // Empty lines are valid
+
+  // Check for common Mermaid patterns
+  const validPatterns = [
+    /^[A-Za-z0-9_]+(\[[^\]]+\]|$$[^)]+$$|\{[^}]+\}|>.*<|$$\([^)]+$$\))/, // Node definitions
+    /^[A-Za-z0-9_]+\s*(-->|->|-->>|->>|-->\||->>\|)\s*[A-Za-z0-9_]+/, // Connections
+    /^participant\s+[A-Za-z0-9_]+/, // Sequence participants
+    /^[A-Za-z0-9_]+\s*(->>|-->>|-x|--x)\s*[A-Za-z0-9_]+/, // Sequence arrows
+    /^class\s+[A-Za-z0-9_]+/, // Class definitions
+    /^[A-Za-z0-9_]+\s*(\|\|--o\{|\|\|--\|\||--o\{|--\|\|)/, // ER relationships
+    /^title\s+/, // Titles
+    /^section\s+/, // Journey sections
+    /^\s*[A-Za-z0-9_\s]+:\s*\d+:\s*[A-Za-z0-9_]+/, // Journey steps
+  ]
+
+  return validPatterns.some((pattern) => pattern.test(trimmed))
+}
+
+// Enhanced validation function with comprehensive error detection
+export function validateMermaidCode(code: string): {
+  isValid: boolean
+  errors: string[]
+  severity: "low" | "medium" | "high"
+} {
   const errors: string[] = []
+  let severity: "low" | "medium" | "high" = "low"
 
   if (!code || typeof code !== "string") {
     errors.push("Empty or invalid code")
-    return { isValid: false, errors }
+    return { isValid: false, errors, severity: "high" }
   }
 
   const lines = code
@@ -37,7 +119,7 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
 
   if (lines.length === 0) {
     errors.push("No content found")
-    return { isValid: false, errors }
+    return { isValid: false, errors, severity: "high" }
   }
 
   const firstLine = lines[0].toLowerCase()
@@ -53,11 +135,26 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     "statediagram",
     "erdiagram",
     "pie",
+    "gitgraph",
+    "mindmap",
+    "timeline",
+    "sankey",
   ]
 
   const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
   if (!hasValidStart) {
     errors.push(`Invalid diagram type. Must start with one of: ${validStarts.join(", ")}`)
+    severity = "high"
+  }
+
+  // Check for error keywords that will cause parsing failures
+  const errorKeywords = ["error", "undefined", "null", "invalid", "parse error", "syntax error"]
+  const codeText = code.toLowerCase()
+  for (const keyword of errorKeywords) {
+    if (codeText.includes(keyword)) {
+      errors.push(`Contains error keyword: ${keyword}`)
+      severity = "high"
+    }
   }
 
   // Diagram-specific validation
@@ -71,16 +168,19 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     validateERDiagram(lines.slice(1), errors)
   }
 
-  // Check for common error patterns
-  const codeText = code.toLowerCase()
-  if (codeText.includes("error") || codeText.includes("identifying") || codeText.includes("parse error")) {
-    errors.push("Contains error keywords that will cause parsing failures")
-  }
+  // Check for common syntax issues
+  validateCommonSyntax(lines, errors)
 
-  return { isValid: errors.length === 0, errors }
+  // Determine severity based on error types
+  if (errors.length > 3) severity = "high"
+  else if (errors.length > 1) severity = "medium"
+
+  return { isValid: errors.length === 0, errors, severity }
 }
 
 function validateSequenceDiagram(lines: string[], errors: string[]) {
+  const participants = new Set<string>()
+
   for (const line of lines) {
     // Check for arrows without senders
     if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
@@ -88,8 +188,21 @@ function validateSequenceDiagram(lines: string[], errors: string[]) {
     }
 
     // Check for proper participant format
-    if (line.startsWith("participant") && !line.match(/participant\s+\w+/)) {
-      errors.push(`Invalid participant declaration: "${line}"`)
+    if (line.startsWith("participant")) {
+      const match = line.match(/participant\s+(\w+)/)
+      if (match) {
+        participants.add(match[1])
+      } else {
+        errors.push(`Invalid participant declaration: "${line}"`)
+      }
+    }
+
+    // Validate arrow syntax
+    const arrowMatch = line.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)/)
+    if (arrowMatch) {
+      const [, sender, , receiver] = arrowMatch
+      participants.add(sender)
+      participants.add(receiver)
     }
   }
 }
@@ -98,8 +211,7 @@ function validateFlowchart(lines: string[], errors: string[]) {
   for (const line of lines) {
     // Check for missing arrows in connections
     if (line.includes("-->") || line.includes("->")) {
-      // Valid connection
-      continue
+      continue // Valid connection
     } else if (line.match(/^\s*\w+.*\w+\s*$/) && !line.includes("[") && !line.includes("{") && !line.includes("(")) {
       // Might be missing arrows
       errors.push(`Possible missing arrow in connection: "${line}"`)
@@ -127,6 +239,22 @@ function validateERDiagram(lines: string[], errors: string[]) {
   }
 }
 
+function validateCommonSyntax(lines: string[], errors: string[]) {
+  for (const line of lines) {
+    // Check for unmatched brackets
+    const openBrackets = (line.match(/[[{(]/g) || []).length
+    const closeBrackets = (line.match(/[\]})]/g) || []).length
+    if (openBrackets !== closeBrackets) {
+      errors.push(`Unmatched brackets in line: "${line}"`)
+    }
+
+    // Check for invalid characters
+    if (line.match(/[<>]/g) && !line.match(/-->|->|<<|>>/)) {
+      errors.push(`Invalid characters in line: "${line}"`)
+    }
+  }
+}
+
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
     return ""
@@ -145,17 +273,7 @@ export function sanitizeMermaidCode(code: string): string {
   // Find where the actual diagram starts
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().toLowerCase()
-    if (
-      line.startsWith("graph") ||
-      line.startsWith("flowchart") ||
-      line.startsWith("sequencediagram") ||
-      line.startsWith("classdiagram") ||
-      line.startsWith("journey") ||
-      line.startsWith("gantt") ||
-      line.startsWith("statediagram") ||
-      line.startsWith("erdiagram") ||
-      line.startsWith("pie")
-    ) {
+    if (isValidMermaidStart(line)) {
       diagramStartIndex = i
       break
     }
@@ -211,18 +329,97 @@ function cleanInvalidSyntax(code: string): string {
   cleaned = cleaned.replace(/\bERROR\b/gi, "")
   cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
   cleaned = cleaned.replace(/\bBelo\b/gi, "")
+  cleaned = cleaned.replace(/\bundefined\b/gi, "")
+  cleaned = cleaned.replace(/\bnull\b/gi, "")
 
   // Fix malformed entity relationships
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
   cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
 
   // Remove invalid characters and patterns
-  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?]/g, "")
+  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()]/g, "")
 
   // Fix broken lines
   cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
 
   return cleaned
+}
+
+// Create fallback diagrams based on detected type
+export function createFallbackDiagram(originalCode: string, diagramType?: string): string {
+  const firstLine = originalCode.split("\n")[0].toLowerCase().trim()
+  const detectedType = diagramType || detectDiagramTypeFromCode(firstLine)
+
+  switch (detectedType) {
+    case "sequence":
+      return `sequenceDiagram
+    participant User
+    participant System
+    User->>System: Request
+    System-->>User: Response`
+
+    case "class":
+      return `classDiagram
+    class User {
+        +String name
+        +String email
+        +login()
+        +logout()
+    }
+    class System {
+        +processRequest()
+        +sendResponse()
+    }
+    User --> System`
+
+    case "er":
+      return `erDiagram
+    USER {
+        int id PK
+        string name
+        string email
+    }
+    ORDER {
+        int id PK
+        int user_id FK
+        date created
+    }
+    USER ||--o{ ORDER : places`
+
+    case "journey":
+      return `journey
+    title User Journey
+    section Task
+      Step 1: 3: User
+      Step 2: 4: User
+      Step 3: 5: User`
+
+    case "gantt":
+      return `gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    section Planning
+    Task 1: 2024-01-01, 7d
+    Task 2: 2024-01-08, 5d`
+
+    default:
+      return `graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Success]
+    C -->|No| E[Error]
+    D --> F[End]
+    E --> F`
+  }
+}
+
+function detectDiagramTypeFromCode(firstLine: string): string {
+  if (firstLine.includes("sequence")) return "sequence"
+  if (firstLine.includes("class")) return "class"
+  if (firstLine.includes("er")) return "er"
+  if (firstLine.includes("journey")) return "journey"
+  if (firstLine.includes("gantt")) return "gantt"
+  return "flowchart"
 }
 
 function fixERDiagramSyntax(code: string): string {
