@@ -25,30 +25,30 @@ import { APP_CONFIG } from "@/lib/constants"
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
   flowchart: `graph TD
-    A[Start] --> B[Process]
-    B --> C{Decision}
-    C -->|Yes| D[Action 1]
-    C -->|No| E[Action 2]
-    D --> F[End]
-    E --> F`,
+  A[Start] --> B[Process]
+  B --> C{Decision}
+  C -->|Yes| D[Action 1]
+  C -->|No| E[Action 2]
+  D --> F[End]
+  E --> F`,
   sequence: `sequenceDiagram
-    participant User
-    participant System
-    participant Database
-    
-    User->>System: Request data
-    System->>Database: Query data
-    Database-->>System: Return results
-    System-->>User: Display results`,
+  participant User
+  participant System
+  participant Database
+  
+  User->>System: Request data
+  System->>Database: Query data
+  Database-->>System: Return results
+  System-->>User: Display results`,
   journey: `journey
-    title User Journey
-    section Login
-      Enter credentials: 3: User
-      Validate: 2: System
-      Success: 5: User
-    section Dashboard
-      View data: 4: User
-      Interact: 3: User`,
+  title User Journey
+  section Login
+    Enter credentials: 3: User
+    Validate: 2: System
+    Success: 5: User
+  section Dashboard
+    View data: 4: User
+    Interact: 3: User`,
 }
 
 export default function Home() {
@@ -694,7 +694,7 @@ export default function Home() {
         {/* Input - Fixed at bottom */}
         <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
           <ChatInput
-            messageCotent={draftMessage}
+            messageContent={draftMessage}
             onChange={setDraftMessage}
             onSubmit={handleSubmit}
             isLoading={isLoading}
