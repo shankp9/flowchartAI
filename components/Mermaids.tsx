@@ -175,7 +175,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         const touch = e.touches[0]
         setPan({
           x: touch.clientX - dragStart.x,
-          y: touch.clientY - dragStart.y,
+          y: touch.clientY - pan.y,
         })
       }
     }
@@ -224,16 +224,26 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     const container = containerRef.current
     if (!container) return
 
-    const svgElement = container.querySelector("svg")
-    if (svgElement) {
-      const svgCode = svgElement.outerHTML
-      copyToClipboard(svgCode)
-      setLabel("Copied!")
-      setTimeout(() => setLabel("Copy SVG"), 2000)
-    } else if (sanitizedCode) {
-      copyToClipboard(sanitizedCode)
-      setLabel("Copied code!")
-      setTimeout(() => setLabel("Copy SVG"), 2000)
+    try {
+      const svgElement = container.querySelector("svg")
+      if (svgElement) {
+        const svgCode = svgElement.outerHTML
+        copyToClipboard(svgCode)
+        setLabel("Copied!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      } else if (sanitizedCode) {
+        copyToClipboard(sanitizedCode)
+        setLabel("Copied code!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      }
+    } catch (e) {
+      console.error("Error copying SVG:", e)
+      // Fallback to code copy
+      if (sanitizedCode) {
+        copyToClipboard(sanitizedCode)
+        setLabel("Copied code!")
+        setTimeout(() => setLabel("Copy SVG"), 2000)
+      }
     }
   }, [copyToClipboard, sanitizedCode])
 
@@ -352,7 +362,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
         // Clear previous content safely
         while (container.firstChild) {
-          container.removeChild(container.firstChild)
+          try {
+            container.removeChild(container.firstChild)
+          } catch (e) {
+            console.warn("Error removing child:", e)
+            // Break the loop if we encounter an error
+            container.innerHTML = ""
+            break
+          }
         }
 
         container.removeAttribute("data-processed")
@@ -428,7 +445,21 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           wrapper.style.top = "50%"
           wrapper.style.left = "50%"
 
-          container.appendChild(wrapper)
+          try {
+            // Only append if container exists and doesn't already have this element
+            if (container && !container.contains(wrapper)) {
+              container.appendChild(wrapper)
+            }
+          } catch (e) {
+            console.error("Error appending wrapper:", e)
+            // Fallback: clear and try again
+            try {
+              container.innerHTML = ""
+              container.appendChild(wrapper)
+            } catch (innerError) {
+              console.error("Failed to append after clearing:", innerError)
+            }
+          }
 
           // Auto-fit on first render if enabled
           if (autoFit) {
@@ -456,14 +487,29 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               </svg>
               <span>${messageText}</span>
             `
-            container.appendChild(successDiv)
 
-            // Auto-hide the success message after 5 seconds
-            setTimeout(() => {
-              if (successDiv.parentNode) {
-                successDiv.parentNode.removeChild(successDiv)
-              }
-            }, 5000)
+            try {
+              container.appendChild(successDiv)
+
+              // Auto-hide the success message after 5 seconds
+              setTimeout(() => {
+                try {
+                  if (successDiv.parentNode === container) {
+                    container.removeChild(successDiv)
+                  } else if (successDiv.parentNode) {
+                    successDiv.parentNode.removeChild(successDiv)
+                  }
+                } catch (e) {
+                  console.warn("Error removing success message:", e)
+                  // Try the safer approach if direct removal fails
+                  if (container.contains(successDiv)) {
+                    container.innerHTML = container.innerHTML
+                  }
+                }
+              }, 5000)
+            } catch (e) {
+              console.warn("Error adding success message:", e)
+            }
           }
         } catch (error) {
           console.error("Mermaid rendering error:", error)
@@ -504,7 +550,14 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           `
 
           errorDiv.innerHTML = errorContent
-          container.appendChild(errorDiv)
+
+          try {
+            // Clear container first to avoid DOM conflicts
+            container.innerHTML = ""
+            container.appendChild(errorDiv)
+          } catch (e) {
+            console.warn("Error adding error message:", e)
+          }
 
           // Add event listeners to the buttons
           setTimeout(() => {
@@ -547,12 +600,29 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       wrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
       wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
     }
+
+    // Return cleanup function
+    return () => {
+      // Nothing specific to clean up here, but this pattern helps React track dependencies properly
+    }
   }, [zoom, pan, isDragging])
 
   // Render chart when chart or theme changes
   useEffect(() => {
     if (isClient && chart) {
       renderChart(chart, theme)
+    }
+
+    // Cleanup function to prevent memory leaks and DOM issues
+    return () => {
+      const container = containerRef.current
+      if (container) {
+        try {
+          container.innerHTML = ""
+        } catch (e) {
+          console.warn("Error cleaning up container:", e)
+        }
+      }
     }
   }, [chart, theme, isClient, renderChart])
 
