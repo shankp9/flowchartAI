@@ -68,7 +68,6 @@ export default function Home() {
             setDiagramSummary(parsed.summary || "")
             setSuggestions(parsed.suggestions || [])
           } catch {
-            // Fallback if JSON parsing fails
             setDiagramSummary("Diagram generated successfully")
             setSuggestions([
               "Add more detail to the process steps",
@@ -136,7 +135,6 @@ export default function Home() {
       const finalCode = parseCodeFromMessage(code)
       setOutputCode(finalCode)
 
-      // Generate summary and suggestions
       if (finalCode) {
         await generateSummaryAndSuggestions(finalCode)
       }
@@ -198,7 +196,6 @@ export default function Home() {
       const finalCode = parseCodeFromMessage(code)
       setOutputCode(finalCode)
 
-      // Generate new summary and suggestions
       if (finalCode) {
         await generateSummaryAndSuggestions(finalCode)
       }
@@ -212,7 +209,7 @@ export default function Home() {
   if (!isClient) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
@@ -220,12 +217,14 @@ export default function Home() {
   return (
     <main className="flex-1 flex h-[calc(100vh-4rem)]">
       {/* Chat Panel */}
-      <div className={`${chatCollapsed ? "w-12" : "w-1/2"} transition-all duration-300 border-r flex flex-col`}>
+      <div
+        className={`${chatCollapsed ? "w-12" : "w-1/2"} transition-all duration-300 border-r border-gray-200 flex flex-col`}
+      >
         {/* Chat Header */}
-        <div className="border-b p-4 bg-muted/30 flex items-center justify-between">
+        <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
           {!chatCollapsed && (
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
+              <Sparkles className="h-5 w-5 text-blue-600" />
               <h2 className="font-semibold">AI Chat</h2>
             </div>
           )}
@@ -240,12 +239,12 @@ export default function Home() {
             <div className="flex-1 overflow-y-auto">
               {messages.length === 0 ? (
                 <div className="p-6 text-center space-y-4">
-                  <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
-                    <Sparkles className="h-8 w-8 text-primary" />
+                  <div className="w-16 h-16 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
+                    <Sparkles className="h-8 w-8 text-blue-600" />
                   </div>
                   <div className="space-y-2">
                     <h3 className="font-semibold text-lg">Create Professional Diagrams</h3>
-                    <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    <p className="text-sm text-gray-600 max-w-md mx-auto">
                       Transform your ideas into beautiful flowcharts, sequence diagrams, and more using the power of AI.
                       Simply describe what you want, and watch it come to life.
                     </p>
@@ -268,8 +267,8 @@ export default function Home() {
                     <ChatMessage key={`${message.content}-${index}`} message={message.content} />
                   ))}
                   {isLoading && (
-                    <div className="flex items-center gap-2 text-muted-foreground p-4">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    <div className="flex items-center gap-2 text-gray-600 p-4">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                       <span className="text-sm">Generating diagram...</span>
                     </div>
                   )}
@@ -278,7 +277,7 @@ export default function Home() {
             </div>
 
             {/* Input */}
-            <div className="border-t p-4 bg-background">
+            <div className="border-t border-gray-200 p-4 bg-white">
               <ChatInput
                 messageCotent={draftMessage}
                 onChange={setDraftMessage}
@@ -293,7 +292,7 @@ export default function Home() {
       {/* Diagram Panel */}
       <div className={`${diagramCollapsed ? "w-12" : "w-1/2"} transition-all duration-300 flex flex-col`}>
         {/* Diagram Header */}
-        <div className="border-b p-4 bg-muted/30 flex items-center justify-between">
+        <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
           <Button
             variant="ghost"
             size="sm"
@@ -312,18 +311,18 @@ export default function Home() {
         {!diagramCollapsed && (
           <>
             {/* Diagram Display */}
-            <div className="flex-1 relative bg-muted/10 overflow-hidden">
+            <div className="flex-1 relative bg-gray-50 overflow-hidden">
               {outputCode ? (
                 <Mermaid chart={outputCode} />
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center space-y-4 max-w-md">
-                    <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-                      <Sparkles className="h-8 w-8 text-muted-foreground" />
+                    <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center">
+                      <Sparkles className="h-8 w-8 text-gray-500" />
                     </div>
                     <div className="space-y-2">
                       <h3 className="font-semibold">Your diagram will appear here</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-gray-600">
                         Describe the diagram you want to create in natural language
                       </p>
                     </div>
@@ -334,7 +333,7 @@ export default function Home() {
 
             {/* Summary and Suggestions */}
             {(diagramSummary || suggestions.length > 0) && (
-              <div className="border-t p-4 space-y-4 max-h-64 overflow-y-auto">
+              <div className="border-t border-gray-200 p-4 space-y-4 max-h-64 overflow-y-auto">
                 {diagramSummary && (
                   <Card>
                     <CardHeader className="pb-2">
@@ -344,7 +343,7 @@ export default function Home() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      <p className="text-sm text-muted-foreground">{diagramSummary}</p>
+                      <p className="text-sm text-gray-600">{diagramSummary}</p>
                     </CardContent>
                   </Card>
                 )}
