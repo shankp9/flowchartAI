@@ -504,47 +504,100 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           throw new Error("Empty diagram code")
         }
 
-        try {
-          // Initialize mermaid with responsive settings
-          mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: "loose",
-            theme: selectedTheme,
-            logLevel: "error",
-            flowchart: {
-              useMaxWidth: false,
-              htmlLabels: true,
-              curve: "basis",
-              padding: screenSize === "mobile" ? 10 : 20,
-            },
-            journey: {
-              useMaxWidth: false,
-            },
-            sequence: {
-              useMaxWidth: false,
-              showSequenceNumbers: true,
-              wrap: true,
-              width: screenSize === "mobile" ? 120 : 150,
-            },
-            gantt: {
-              useMaxWidth: false,
-            },
-          })
+        // Multiple retry attempts with progressively simpler syntax
+        let svg = ""
+        let renderSuccess = false
+        let lastError = ""
 
-          const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-          let svg: string
+        for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const result = await mermaid.render(id, cleanedCode)
-            svg = result.svg
-          } catch (renderError) {
-            console.warn("Initial render failed, attempting with simplified syntax:", renderError)
-            const simplifiedCode = createSimplifiedDiagram(cleanedCode)
-            const simplifiedResult = await mermaid.render(id + "_simplified", simplifiedCode)
-            svg = simplifiedResult.svg
-            setWasFixed(true)
-          }
+            // Initialize mermaid with error-resistant settings
+            mermaid.initialize({
+              startOnLoad: false,
+              securityLevel: "loose",
+              theme: selectedTheme,
+              logLevel: "error",
+              flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true,
+                curve: "basis",
+                padding: screenSize === "mobile" ? 10 : 20,
+              },
+              journey: {
+                useMaxWidth: false,
+              },
+              sequence: {
+                useMaxWidth: false,
+                showSequenceNumbers: true,
+                wrap: true,
+                width: screenSize === "mobile" ? 120 : 150,
+              },
+              gantt: {
+                useMaxWidth: false,
+              },
+              er: {
+                useMaxWidth: false,
+              },
+              class: {
+                useMaxWidth: false,
+              },
+              state: {
+                useMaxWidth: false,
+              },
+              pie: {
+                useMaxWidth: false,
+              },
+            })
 
+            const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+            if (attempt === 0) {
+              // First attempt: use cleaned code as-is
+              const result = await mermaid.render(id, cleanedCode)
+              svg = result.svg
+            } else if (attempt === 1) {
+              // Second attempt: use simplified version
+              console.warn("First render failed, trying simplified syntax")
+              const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+              const result = await mermaid.render(id + "_simplified", simplifiedCode)
+              svg = result.svg
+              setWasFixed(true)
+            } else {
+              // Third attempt: use fallback diagram
+              console.warn("Second render failed, using fallback diagram")
+              const fallbackCode = createFallbackDiagram(cleanedCode, lastError)
+              const result = await mermaid.render(id + "_fallback", fallbackCode)
+              svg = result.svg
+              setWasFixed(true)
+            }
+
+            renderSuccess = true
+            break
+          } catch (renderError) {
+            lastError = renderError instanceof Error ? renderError.message : "Unknown render error"
+            console.warn(`Render attempt ${attempt + 1} failed:`, lastError)
+
+            if (attempt === 2) {
+              // Final fallback - create a simple text-based diagram
+              svg = `<svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="400" height="200" fill="#f8f9fa" stroke="#dee2e6"/>
+                <text x="200" y="80" textAnchor="middle" fontFamily="Arial" fontSize="14" fill="#6c757d">
+                  Diagram Rendering Error
+                </text>
+                <text x="200" y="110" textAnchor="middle" fontFamily="Arial" fontSize="12" fill="#6c757d">
+                  Please check your syntax and try again
+                </text>
+                <text x="200" y="140" textAnchor="middle" fontFamily="Arial" fontSize="10" fill="#6c757d">
+                  Error: ${lastError.substring(0, 50)}...
+                </text>
+              </svg>`
+              renderSuccess = true
+              setWasFixed(true)
+            }
+          }
+        }
+
+        if (renderSuccess && svg) {
           const wrapper = document.createElement("div")
           wrapper.innerHTML = svg
           wrapper.style.transformOrigin = "center center"
@@ -597,6 +650,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             setTimeout(() => handleFitToScreen(), 100)
           }
 
+          // Show success message for fixes
           if (codeWasFixed || isOldSyntax || wasFixed) {
             const successDiv = document.createElement("div")
             let messageText = "Syntax automatically fixed"
@@ -615,9 +669,9 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             successDiv.innerHTML = `
               <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
-              </svg>
-              <span class="flex-1">${messageText}</span>
-            `
+            </svg>
+            <span class="flex-1">${messageText}</span>
+          `
 
             try {
               container.appendChild(successDiv)
@@ -630,84 +684,43 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                   }
                 } catch (e) {
                   console.warn("Error removing success message:", e)
-                  if (container.contains(successDiv)) {
-                    container.innerHTML = container.innerHTML
-                  }
                 }
               }, 5000)
             } catch (e) {
               console.warn("Error adding success message:", e)
             }
           }
-        } catch (error) {
-          console.error("Mermaid rendering error:", error)
-          const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
-          setError(errorMessage)
-
-          const errorDiv = document.createElement("div")
-          errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
-
-          let errorContent = `
-            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
-            <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
-          `
-
-          if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
-            errorContent += `
-              <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
-                <strong class="block mb-2">Common fixes:</strong>
-                • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
-                • Ensure participant names don't contain spaces or special characters<br>
-                • Verify all connections have proper arrow syntax (--&gt;)<br>
-                • Make sure all brackets and quotes are properly closed
-              </div>
-            `
-          }
-
-          const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"
-          errorContent += `
-            <div class="flex ${buttonLayout}">
-              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
-                Show Diagram Code
-              </button>
-              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
-                Try Simplified Version
-              </button>
-            </div>
-          `
-
-          errorDiv.innerHTML = errorContent
-
-          try {
-            container.innerHTML = ""
-            container.appendChild(errorDiv)
-          } catch (e) {
-            console.warn("Error adding error message:", e)
-          }
-
-          setTimeout(() => {
-            const showCodeBtn = document.getElementById("show-code-btn")
-            const retryBtn = document.getElementById("retry-simplified-btn")
-
-            if (showCodeBtn) {
-              showCodeBtn.addEventListener("click", () => setShowCode(true))
-            }
-
-            if (retryBtn) {
-              retryBtn.addEventListener("click", async () => {
-                try {
-                  const simplifiedCode = createSimplifiedDiagram(cleanedCode)
-                  await renderChart(simplifiedCode, selectedTheme)
-                } catch (e) {
-                  console.error("Simplified render also failed:", e)
-                }
-              })
-            }
-          }, 0)
+        } else {
+          throw new Error("Failed to render diagram after all attempts")
         }
       } catch (error) {
-        console.error("Mermaid rendering error:", error)
-        setError(error instanceof Error ? error.message : "Unknown rendering error")
+        console.error("Final rendering error:", error)
+        const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
+        setError(errorMessage)
+
+        // Create a user-friendly error display
+        const errorDiv = document.createElement("div")
+        errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
+        errorDiv.innerHTML = `
+        <div class="font-semibold mb-4 text-lg">Unable to Render Diagram</div>
+        <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">
+          The diagram syntax could not be processed. Please try a simpler version or check the syntax.
+        </div>
+        <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+          <strong class="block mb-2">Suggestions:</strong>
+          • Try describing your diagram in simpler terms<br>
+          • Use basic flowchart or sequence diagram syntax<br>
+          • Avoid special characters in node names<br>
+          • Check that all connections have proper arrows
+        </div>
+      `
+
+        try {
+          container.innerHTML = ""
+          container.appendChild(errorDiv)
+        } catch (e) {
+          console.warn("Error adding error message:", e)
+        }
       } finally {
         setIsRendering(false)
       }
@@ -1314,4 +1327,26 @@ function createSimplifiedDiagram(originalCode: string): string {
     style B fill:#ffffcc
     style C fill:#ccffcc`
   }
+}
+
+function createFallbackDiagram(originalCode: string, errorMessage: string): string {
+  return `graph TD
+  A[Error] --> B(Check Syntax)
+  B --> C{Try Again}
+  style A fill:#f00,color:#fff
+  style B fill:#ff0,color:#000
+  style C fill:#0f0,color:#fff
+  classDef error fill:#f00,color:#fff
+  classDef warning fill:#ff0,color:#000
+  classDef success fill:#0f0,color:#fff
+  class A error
+  class B warning
+  class C success
+  linkStyle default stroke:black,fill:none;
+  subgraph Original Code
+  ${originalCode.substring(0, 100)}...
+  end
+  subgraph Error Message
+  ${errorMessage.substring(0, 100)}...
+  end`
 }

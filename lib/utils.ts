@@ -154,7 +154,16 @@ export function sanitizeMermaidCode(code: string): string {
       line.startsWith("gantt") ||
       line.startsWith("statediagram") ||
       line.startsWith("erdiagram") ||
-      line.startsWith("pie")
+      line.startsWith("pie") ||
+      line.startsWith("gitgraph") ||
+      line.startsWith("mindmap") ||
+      line.startsWith("timeline") ||
+      line.startsWith("sankey") ||
+      line.startsWith("requirement") ||
+      line.startsWith("c4context") ||
+      line.startsWith("c4container") ||
+      line.startsWith("c4component") ||
+      line.startsWith("c4dynamic")
     ) {
       diagramStartIndex = i
       break
@@ -174,22 +183,22 @@ export function sanitizeMermaidCode(code: string): string {
   cleanedCode = cleanInvalidSyntax(cleanedCode)
 
   // Fix common sequence diagram issues
-  if (cleanedCode.includes("sequenceDiagram")) {
+  if (cleanedCode.toLowerCase().includes("sequencediagram")) {
     cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
   }
 
   // Fix common flowchart issues
-  if (cleanedCode.includes("graph") || cleanedCode.includes("flowchart")) {
+  if (cleanedCode.toLowerCase().includes("graph") || cleanedCode.toLowerCase().includes("flowchart")) {
     cleanedCode = fixFlowchartSyntax(cleanedCode)
   }
 
   // Fix ER diagram issues
-  if (cleanedCode.includes("erDiagram")) {
+  if (cleanedCode.toLowerCase().includes("erdiagram")) {
     cleanedCode = fixERDiagramSyntax(cleanedCode)
   }
 
   // Fix class diagram issues
-  if (cleanedCode.includes("classDiagram")) {
+  if (cleanedCode.toLowerCase().includes("classdiagram")) {
     cleanedCode = fixClassDiagramSyntax(cleanedCode)
   }
 
@@ -199,6 +208,13 @@ export function sanitizeMermaidCode(code: string): string {
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .join("\n")
+
+  // Final validation - if still invalid, return a simple fallback
+  if (!cleanedCode || cleanedCode.length < 5) {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]`
+  }
 
   return cleanedCode
 }
@@ -211,16 +227,24 @@ function cleanInvalidSyntax(code: string): string {
   cleaned = cleaned.replace(/\bERROR\b/gi, "")
   cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
   cleaned = cleaned.replace(/\bBelo\b/gi, "")
+  cleaned = cleaned.replace(/\bSyntax error\b/gi, "")
+  cleaned = cleaned.replace(/\bmermaid version\b/gi, "")
 
   // Fix malformed entity relationships
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
   cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
 
-  // Remove invalid characters and patterns
-  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?]/g, "")
+  // Remove invalid characters but preserve essential ones
+  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]()$$$$:;.,"'`~!@#$%^&*+=/\\?\n]/g, "")
 
-  // Fix broken lines
+  // Fix broken lines and excessive whitespace
   cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
+  cleaned = cleaned.replace(/\s+/g, " ")
+  cleaned = cleaned.replace(/\n\s+/g, "\n")
+
+  // Ensure proper line endings
+  cleaned = cleaned.replace(/\r\n/g, "\n")
+  cleaned = cleaned.replace(/\r/g, "\n")
 
   return cleaned
 }
@@ -484,6 +508,79 @@ function fixFlowchartSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
+}
+
+export function createFallbackDiagram(originalCode: string, errorMessage: string): string {
+  const lines = originalCode
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (lines.length === 0) {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]`
+  }
+
+  const firstLine = lines[0].toLowerCase()
+
+  if (firstLine.startsWith("sequencediagram")) {
+    return `sequenceDiagram
+    participant User
+    participant System
+    User->>System: Request
+    System-->>User: Response`
+  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Success]
+    C -->|No| E[Error]
+    D --> F[End]
+    E --> F`
+  } else if (firstLine.startsWith("journey")) {
+    return `journey
+    title User Journey
+    section Task
+      Step 1: 3: User
+      Step 2: 4: User
+      Step 3: 5: User`
+  } else if (firstLine.startsWith("classdiagram")) {
+    return `classDiagram
+    class User {
+      +String name
+      +login()
+    }
+    class System {
+      +process()
+    }
+    User --> System`
+  } else if (firstLine.startsWith("erdiagram")) {
+    return `erDiagram
+    USER {
+        int id PK
+        string name
+    }
+    ORDER {
+        int id PK
+        int user_id FK
+    }
+    USER ||--o{ ORDER : places`
+  } else if (firstLine.startsWith("gantt")) {
+    return `gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    section Phase 1
+    Task 1 :2024-01-01, 30d
+    Task 2 :2024-02-01, 20d`
+  } else {
+    return `graph TD
+    A[Original diagram had syntax errors] --> B[Showing simplified version]
+    B --> C[Please check your syntax]
+    style A fill:#ffcccc
+    style B fill:#ffffcc
+    style C fill:#ccffcc`
+  }
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
