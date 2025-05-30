@@ -477,14 +477,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setWasConverted(false)
 
         // Clear previous content safely
-        while (container.firstChild) {
-          try {
-            container.removeChild(container.firstChild)
-          } catch (e) {
-            console.warn("Error removing child:", e)
-            container.innerHTML = ""
-            break
-          }
+        if (container) {
+          container.innerHTML = ""
         }
 
         container.removeAttribute("data-processed")
@@ -622,16 +616,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
             try {
               container.appendChild(successDiv)
               setTimeout(() => {
-                try {
-                  if (successDiv.parentNode === container) {
+                if (container && container.contains(successDiv)) {
+                  try {
                     container.removeChild(successDiv)
-                  } else if (successDiv.parentNode) {
-                    successDiv.parentNode.removeChild(successDiv)
-                  }
-                } catch (e) {
-                  console.warn("Error removing success message:", e)
-                  if (container.contains(successDiv)) {
-                    container.innerHTML = container.innerHTML
+                  } catch (e) {
+                    // It's possible the container was cleared by another renderChart call in the meantime
+                    console.warn("Error removing success message, it might have been already removed:", e)
                   }
                 }
               }, 5000)
