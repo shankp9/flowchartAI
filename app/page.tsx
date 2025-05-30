@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Clock,
 } from "lucide-react"
 
 import { Mermaid } from "@/components/Mermaids"
@@ -18,7 +19,7 @@ import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
-import { parseCodeFromMessage, sanitizeMermaidCode } from "@/lib/utils"
+import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
 
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
@@ -64,6 +65,11 @@ export default function Home() {
   const [error, setError] = useState<string>("")
   const [retryCount, setRetryCount] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Enhanced retry state
+  const [retryAttempts, setRetryAttempts] = useState(0)
+  const [retryHistory, setRetryHistory] = useState<string[]>([])
+  const [isRetrying, setIsRetrying] = useState(false)
 
   // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -180,6 +186,179 @@ export default function Home() {
     }
   }, [])
 
+  // Enhanced diagram generation with automatic retry logic
+  const generateDiagramWithRetry = useCallback(
+    async (
+      userMessage: string,
+      currentMessages: Message[],
+      attemptNumber = 0,
+      previousErrors: string[] = [],
+    ): Promise<{ success: boolean; code?: string; error?: string }> => {
+      const maxRetries = 3
+
+      try {
+        // Determine if the user is asking for a specific diagram type
+        const diagramType = detectDiagramType(userMessage)
+        let promptContent = userMessage
+
+        // Get current diagram for context if this seems like a modification request
+        const isModificationRequest =
+          userMessage.toLowerCase().includes("add") ||
+          userMessage.toLowerCase().includes("modify") ||
+          userMessage.toLowerCase().includes("change") ||
+          userMessage.toLowerCase().includes("update") ||
+          userMessage.toLowerCase().includes("improve")
+
+        if (isModificationRequest && outputCode) {
+          promptContent = `${userMessage}
+
+Current diagram:
+\`\`\`mermaid
+${outputCode}
+\`\`\`
+
+Please modify this diagram according to the request while maintaining proper Mermaid syntax.`
+        } else if (diagramType) {
+          promptContent = `Create a ${diagramType} diagram for: ${userMessage}. Use proper Mermaid syntax for ${diagramType} diagrams.`
+        }
+
+        // Add retry-specific instructions based on attempt number and previous errors
+        if (attemptNumber > 0) {
+          const errorContext =
+            previousErrors.length > 0
+              ? `\n\nPrevious attempts failed with these errors:\n${previousErrors.map((err, i) => `Attempt ${i + 1}: ${err}`).join("\n")}`
+              : ""
+
+          promptContent = `${promptContent}
+
+RETRY ATTEMPT ${attemptNumber + 1}/${maxRetries}:
+${errorContext}
+
+CRITICAL: This is a retry attempt. Please ensure the Mermaid syntax is absolutely correct:
+${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
+        }
+
+        // Create the message with enhanced prompt
+        const enhancedMessage: Message = {
+          role: "user",
+          content: promptContent,
+        }
+
+        const response = await fetch("/api/openai", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: [...currentMessages, enhancedMessage],
+            model: "gpt-3.5-turbo",
+            retryAttempt: attemptNumber,
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to generate diagram")
+        }
+
+        const data = response.body
+        if (!data) {
+          throw new Error("No response data received.")
+        }
+
+        const reader = data.getReader()
+        const decoder = new TextDecoder()
+        let done = false
+        let code = ""
+
+        while (!done) {
+          const { value, done: doneReading } = await reader.read()
+          done = doneReading
+          const chunkValue = decoder.decode(value)
+          code += chunkValue
+
+          // Update draft code for real-time feedback
+          if (attemptNumber === 0) {
+            setDraftOutputCode((prevCode) => prevCode + chunkValue)
+          }
+        }
+
+        // Parse and sanitize the code
+        const parsedCode = parseCodeFromMessage(code)
+        const sanitizedCode = sanitizeMermaidCode(parsedCode)
+
+        // Validate the generated code
+        const validationResult = validateMermaidCode(sanitizedCode)
+
+        if (validationResult.isValid && sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
+          return { success: true, code: sanitizedCode }
+        } else {
+          const errorMessage = validationResult.errors.join("; ") || "Invalid diagram syntax generated"
+
+          // If we haven't reached max retries, try again
+          if (attemptNumber < maxRetries - 1) {
+            console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
+
+            // Add this error to the history
+            const newErrors = [...previousErrors, errorMessage]
+            setRetryHistory(newErrors)
+            setRetryAttempts(attemptNumber + 1)
+
+            // Wait a brief moment before retrying
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+
+            return await generateDiagramWithRetry(userMessage, currentMessages, attemptNumber + 1, newErrors)
+          } else {
+            return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+
+        // If we haven't reached max retries, try again
+        if (attemptNumber < maxRetries - 1) {
+          console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
+
+          const newErrors = [...previousErrors, errorMessage]
+          setRetryHistory(newErrors)
+          setRetryAttempts(attemptNumber + 1)
+
+          // Wait a brief moment before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          return await generateDiagramWithRetry(userMessage, currentMessages, attemptNumber + 1, newErrors)
+        } else {
+          return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
+        }
+      }
+    },
+    [outputCode],
+  )
+
+  // Function to get retry-specific instructions
+  const getRetryInstructions = (attemptNumber: number, diagramType: string | null, previousErrors: string[]) => {
+    const baseInstructions = `
+1. Start directly with the diagram type keyword (graph, sequenceDiagram, etc.)
+2. Use only valid Mermaid syntax - no explanatory text
+3. Ensure all connections use proper arrow syntax
+4. Validate all node names and labels`
+
+    if (attemptNumber === 1) {
+      return `${baseInstructions}
+5. Focus on simple, basic syntax
+6. Avoid complex features that might cause parsing errors
+7. Use standard node shapes and connection types`
+    } else if (attemptNumber === 2) {
+      return `${baseInstructions}
+5. Use the most minimal syntax possible
+6. Stick to basic examples from Mermaid documentation
+7. Avoid any advanced features or complex structures
+8. Double-check every line for syntax correctness`
+    }
+
+    return baseInstructions
+  }
+
   const handleSubmit = useCallback(async () => {
     if (!draftMessage.trim()) {
       return
@@ -195,161 +374,46 @@ export default function Home() {
     setDraftMessage("")
     setDraftOutputCode("")
     setIsLoading(true)
+    setIsRetrying(false)
     setError("")
     setRetryCount(0)
-
-    // Determine if the user is asking for a specific diagram type
-    const diagramType = detectDiagramType(draftMessage)
-    let promptContent = draftMessage
-
-    // Get current diagram for context if this seems like a modification request
-    const isModificationRequest =
-      draftMessage.toLowerCase().includes("add") ||
-      draftMessage.toLowerCase().includes("modify") ||
-      draftMessage.toLowerCase().includes("change") ||
-      draftMessage.toLowerCase().includes("update") ||
-      draftMessage.toLowerCase().includes("improve")
-
-    if (isModificationRequest && outputCode) {
-      promptContent = `${draftMessage}
-
-Current diagram:
-\`\`\`mermaid
-${outputCode}
-\`\`\`
-
-Please modify this diagram according to the request while maintaining proper Mermaid syntax.`
-    } else if (diagramType) {
-      promptContent = `Create a ${diagramType} diagram for: ${draftMessage}. Use proper Mermaid syntax for ${diagramType} diagrams.`
-    }
-
-    // Create the message with enhanced prompt
-    const enhancedMessage: Message = {
-      role: "user",
-      content: promptContent,
-    }
+    setRetryAttempts(0)
+    setRetryHistory([])
 
     try {
-      const response = await fetch("/api/openai", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: [...messages, enhancedMessage],
-          model: "gpt-3.5-turbo",
-        }),
-      })
+      setIsRetrying(true)
+      const result = await generateDiagramWithRetry(draftMessage, messages)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to generate diagram")
-      }
-
-      const data = response.body
-      if (!data) {
-        throw new Error("No response data received.")
-      }
-
-      const reader = data.getReader()
-      const decoder = new TextDecoder()
-      let done = false
-      let code = ""
-
-      while (!done) {
-        const { value, done: doneReading } = await reader.read()
-        done = doneReading
-        const chunkValue = decoder.decode(value)
-        code += chunkValue
-        setDraftOutputCode((prevCode) => prevCode + chunkValue)
-      }
-
-      // Parse and sanitize the code
-      const parsedCode = parseCodeFromMessage(code)
-      const sanitizedCode = sanitizeMermaidCode(parsedCode)
-
-      if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
-        setOutputCode(sanitizedCode)
-        // Clear draft code after setting final code
+      if (result.success && result.code) {
+        setOutputCode(result.code)
         setDraftOutputCode("")
-        // Generate summary and suggestions
-        await generateSummaryAndSuggestions(sanitizedCode)
+        await generateSummaryAndSuggestions(result.code)
+
+        // Add success message if there were retries
+        if (retryAttempts > 0) {
+          const retryMessage: Message = {
+            role: "assistant",
+            content: `✅ **Diagram generated successfully after ${retryAttempts + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
+          }
+          setMessages((prev) => [...prev, retryMessage])
+        }
       } else {
-        throw new Error("Invalid diagram syntax received")
+        throw new Error(result.error || "Failed to generate valid diagram")
       }
     } catch (error) {
-      console.error("Request error:", error)
+      console.error("Final generation error:", error)
       setError(error instanceof Error ? error.message : "An error occurred")
 
-      // Enhanced retry logic with better prompts
-      if (retryCount === 0) {
-        setRetryCount(1)
-        const fallbackType = diagramType || "flowchart"
-
-        const retryMessage: Message = {
-          role: "user",
-          content: `Create a simple ${fallbackType} diagram for: ${draftMessage}. 
-        
-Use this exact syntax pattern:
-${EXAMPLE_DIAGRAMS[fallbackType as keyof typeof EXAMPLE_DIAGRAMS] || EXAMPLE_DIAGRAMS.flowchart}
-
-Replace the content with elements relevant to my request, but keep the exact same syntax structure.`,
-        }
-
-        const retryMessages = [...newMessages, retryMessage]
-
-        try {
-          setError("Retrying with simplified syntax...")
-
-          const retryResponse = await fetch("/api/openai", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messages: retryMessages,
-              model: "gpt-3.5-turbo",
-            }),
-          })
-
-          if (retryResponse.ok) {
-            const retryData = retryResponse.body
-            if (retryData) {
-              const retryReader = retryData.getReader()
-              const retryDecoder = new TextDecoder()
-              let retryDone = false
-              let retryCode = ""
-
-              while (!retryDone) {
-                const { value, done: retryDoneReading } = await retryReader.read()
-                retryDone = retryDoneReading
-                const retryChunkValue = retryDecoder.decode(value)
-                retryCode += retryChunkValue
-              }
-
-              const retryParsedCode = parseCodeFromMessage(retryCode)
-              const retrySanitizedCode = sanitizeMermaidCode(retryParsedCode)
-
-              if (retrySanitizedCode && !retrySanitizedCode.includes("Error: Invalid Response")) {
-                setOutputCode(retrySanitizedCode)
-                setDraftOutputCode("")
-                await generateSummaryAndSuggestions(retrySanitizedCode)
-                setError("")
-              } else {
-                setError("Unable to generate a valid diagram. Please try a more specific request.")
-              }
-            }
-          }
-        } catch (retryError) {
-          console.error("Retry error:", retryError)
-          setError("Unable to generate diagram. Please try again with a more specific request.")
-        }
+      // Show retry history in error message
+      if (retryHistory.length > 0) {
+        const retryInfo = `\n\nRetry attempts made:\n${retryHistory.map((err, i) => `• Attempt ${i + 1}: ${err}`).join("\n")}`
+        setError((prev) => prev + retryInfo)
       }
     } finally {
-      // Always set loading to false when done
       setIsLoading(false)
+      setIsRetrying(false)
     }
-  }, [draftMessage, messages, generateSummaryAndSuggestions, retryCount, outputCode])
+  }, [draftMessage, messages, generateDiagramWithRetry, generateSummaryAndSuggestions, retryAttempts, retryHistory])
 
   // Function to detect the diagram type from user input
   const detectDiagramType = (input: string): string | null => {
@@ -415,62 +479,31 @@ Please update this diagram to incorporate the suggestion while maintaining the e
       setDraftMessage("")
       setDraftOutputCode("")
       setIsLoading(true)
+      setIsRetrying(false)
       setError("")
+      setRetryAttempts(0)
+      setRetryHistory([])
 
       try {
-        const response = await fetch("/api/openai", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messages: newMessages,
-            model: "gpt-3.5-turbo",
-          }),
-        })
+        setIsRetrying(true)
+        const result = await generateDiagramWithRetry(improvementPrompt, messages)
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to generate diagram")
-        }
-
-        const data = response.body
-        if (!data) {
-          throw new Error("No response data received.")
-        }
-
-        const reader = data.getReader()
-        const decoder = new TextDecoder()
-        let done = false
-        let code = ""
-
-        while (!done) {
-          const { value, done: doneReading } = await reader.read()
-          done = doneReading
-          const chunkValue = decoder.decode(value)
-          code += chunkValue
-          setDraftOutputCode((prevCode) => prevCode + chunkValue)
-        }
-
-        const parsedCode = parseCodeFromMessage(code)
-        const sanitizedCode = sanitizeMermaidCode(parsedCode)
-
-        if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
-          setOutputCode(sanitizedCode)
+        if (result.success && result.code) {
+          setOutputCode(result.code)
           setDraftOutputCode("")
-          await generateSummaryAndSuggestions(sanitizedCode)
+          await generateSummaryAndSuggestions(result.code)
         } else {
-          throw new Error("Invalid diagram syntax received")
+          throw new Error(result.error || "Failed to generate valid diagram")
         }
       } catch (error) {
-        console.error("Request error:", error)
+        console.error("Suggestion generation error:", error)
         setError(error instanceof Error ? error.message : "An error occurred")
       } finally {
-        // Always set loading to false when done
         setIsLoading(false)
+        setIsRetrying(false)
       }
     },
-    [messages, generateSummaryAndSuggestions, outputCode, draftOutputCode],
+    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions, outputCode, draftOutputCode],
   )
 
   const handleRetry = useCallback(() => {
@@ -546,7 +579,9 @@ Please update this diagram to incorporate the suggestion while maintaining the e
               <span
                 className={`w-2 h-2 rounded-full ${isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"}`}
               ></span>
-              <span>{isLoading ? "Generating..." : "Ready"}</span>
+              <span>
+                {isLoading ? (isRetrying ? `Retrying... (${retryAttempts + 1}/3)` : "Generating...") : "Ready"}
+              </span>
             </div>
           </div>
 
@@ -623,13 +658,13 @@ Please update this diagram to incorporate the suggestion while maintaining the e
 
               <div className="flex flex-wrap justify-center gap-2 pt-4">
                 <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                  Instant Generation
+                  Auto-Retry
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                  Multiple Formats
+                  Error Correction
                 </Badge>
                 <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
-                  Export Ready
+                  Valid Syntax
                 </Badge>
               </div>
             </div>
@@ -648,9 +683,19 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                 <div className="flex items-center gap-3 text-gray-600 p-4 bg-blue-50 rounded-lg">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                   <div className="flex-1">
-                    <span className="text-sm font-medium">Generating diagram...</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">
+                        {isRetrying ? `Generating diagram (Attempt ${retryAttempts + 1}/3)` : "Generating diagram..."}
+                      </span>
+                      {isRetrying && <Clock className="h-4 w-4 text-blue-600" />}
+                    </div>
                     {draftOutputCode && (
                       <div className="mt-2 text-xs text-gray-500">Received {draftOutputCode.length} characters...</div>
+                    )}
+                    {isRetrying && retryHistory.length > 0 && (
+                      <div className="mt-2 text-xs text-blue-600">
+                        Auto-correcting syntax issues from previous attempts...
+                      </div>
                     )}
                   </div>
                 </div>
@@ -660,20 +705,18 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                   <AlertCircle className="h-5 w-5 flex-shrink-0" />
                   <div className="flex-1">
                     <span className="text-sm font-medium">{error}</span>
-                    {retryCount > 0 && (
-                      <div className="mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleRetry}
-                          className="text-xs flex items-center gap-2 hover:bg-red-100"
-                          disabled={isLoading}
-                        >
-                          <RefreshCw className="h-3 w-3" />
-                          Try Again with Different Format
-                        </Button>
-                      </div>
-                    )}
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRetry}
+                        className="text-xs flex items-center gap-2 hover:bg-red-100"
+                        disabled={isLoading}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Try Again
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -706,10 +749,10 @@ Please update this diagram to incorporate the suggestion while maintaining the e
               {outputCode && (
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                    Live
+                    Valid Syntax
                   </Badge>
                   <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                    Interactive
+                    Auto-Corrected
                   </Badge>
                 </div>
               )}

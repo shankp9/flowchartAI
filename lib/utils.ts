@@ -21,6 +21,112 @@ export function parseCodeFromMessage(message: string): string {
   return match ? match[1].trim() : message.trim()
 }
 
+// Enhanced validation function with detailed error reporting
+export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = []
+
+  if (!code || typeof code !== "string") {
+    errors.push("Empty or invalid code")
+    return { isValid: false, errors }
+  }
+
+  const lines = code
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (lines.length === 0) {
+    errors.push("No content found")
+    return { isValid: false, errors }
+  }
+
+  const firstLine = lines[0].toLowerCase()
+
+  // Check if it starts with a valid diagram type
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+  ]
+
+  const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
+  if (!hasValidStart) {
+    errors.push(`Invalid diagram type. Must start with one of: ${validStarts.join(", ")}`)
+  }
+
+  // Diagram-specific validation
+  if (firstLine.startsWith("sequencediagram")) {
+    validateSequenceDiagram(lines.slice(1), errors)
+  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+    validateFlowchart(lines.slice(1), errors)
+  } else if (firstLine.startsWith("classdiagram")) {
+    validateClassDiagram(lines.slice(1), errors)
+  } else if (firstLine.startsWith("erdiagram")) {
+    validateERDiagram(lines.slice(1), errors)
+  }
+
+  // Check for common error patterns
+  const codeText = code.toLowerCase()
+  if (codeText.includes("error") || codeText.includes("identifying") || codeText.includes("parse error")) {
+    errors.push("Contains error keywords that will cause parsing failures")
+  }
+
+  return { isValid: errors.length === 0, errors }
+}
+
+function validateSequenceDiagram(lines: string[], errors: string[]) {
+  for (const line of lines) {
+    // Check for arrows without senders
+    if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
+      errors.push(`Invalid sequence diagram arrow without sender: "${line}"`)
+    }
+
+    // Check for proper participant format
+    if (line.startsWith("participant") && !line.match(/participant\s+\w+/)) {
+      errors.push(`Invalid participant declaration: "${line}"`)
+    }
+  }
+}
+
+function validateFlowchart(lines: string[], errors: string[]) {
+  for (const line of lines) {
+    // Check for missing arrows in connections
+    if (line.includes("-->") || line.includes("->")) {
+      // Valid connection
+      continue
+    } else if (line.match(/^\s*\w+.*\w+\s*$/) && !line.includes("[") && !line.includes("{") && !line.includes("(")) {
+      // Might be missing arrows
+      errors.push(`Possible missing arrow in connection: "${line}"`)
+    }
+  }
+}
+
+function validateClassDiagram(lines: string[], errors: string[]) {
+  for (const line of lines) {
+    // Check for proper class syntax
+    if (line.includes("class ") && !line.match(/class\s+\w+/)) {
+      errors.push(`Invalid class declaration: "${line}"`)
+    }
+  }
+}
+
+function validateERDiagram(lines: string[], errors: string[]) {
+  for (const line of lines) {
+    // Check for proper entity relationship syntax
+    if (line.includes("||") || line.includes("}|") || line.includes("|{")) {
+      if (!line.match(/\w+\s+[|}{]+[-|]+[|}{]+\s+\w+/)) {
+        errors.push(`Invalid ER relationship syntax: "${line}"`)
+      }
+    }
+  }
+}
+
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
     return ""
@@ -85,12 +191,6 @@ export function sanitizeMermaidCode(code: string): string {
   // Fix class diagram issues
   if (cleanedCode.includes("classDiagram")) {
     cleanedCode = fixClassDiagramSyntax(cleanedCode)
-  }
-
-  // Final validation and fallback
-  if (!validateMermaidSyntax(cleanedCode)) {
-    console.warn("Generated code has syntax issues, creating fallback:", cleanedCode)
-    return createFallbackDiagram(cleanedCode)
   }
 
   // Remove empty lines and normalize whitespace
@@ -219,45 +319,6 @@ function fixClassDiagramSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
-}
-
-function validateMermaidSyntax(code: string): boolean {
-  const lines = code
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  if (lines.length === 0) return false
-
-  const firstLine = lines[0].toLowerCase()
-
-  // Check if it starts with a valid diagram type
-  const validStarts = [
-    "graph",
-    "flowchart",
-    "sequencediagram",
-    "classdiagram",
-    "journey",
-    "gantt",
-    "statediagram",
-    "erdiagram",
-    "pie",
-  ]
-
-  const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
-  if (!hasValidStart) return false
-
-  // Additional validation for sequence diagrams
-  if (firstLine.startsWith("sequencediagram")) {
-    for (const line of lines.slice(1)) {
-      // Check for arrows without senders
-      if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
-        return false
-      }
-    }
-  }
-
-  return true
 }
 
 function isOldFlowchartSyntax(code: string): boolean {
@@ -423,66 +484,6 @@ function fixFlowchartSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
-}
-
-function createFallbackDiagram(originalCode: string): string {
-  const firstLine = originalCode.split("\n")[0].toLowerCase().trim()
-
-  if (firstLine.includes("sequence")) {
-    return `sequenceDiagram
-    participant User
-    participant System
-    User->>System: Request
-    System-->>User: Response`
-  } else if (firstLine.includes("class")) {
-    return `classDiagram
-    class User {
-        +String name
-        +String email
-        +login()
-        +logout()
-    }
-    class System {
-        +processRequest()
-        +sendResponse()
-    }
-    User --> System`
-  } else if (firstLine.includes("er")) {
-    return `erDiagram
-    USER {
-        int id PK
-        string name
-        string email
-    }
-    ORDER {
-        int id PK
-        int user_id FK
-        date created
-    }
-    USER ||--o{ ORDER : places`
-  } else if (firstLine.includes("journey")) {
-    return `journey
-    title User Journey
-    section Task
-      Step 1: 3: User
-      Step 2: 4: User
-      Step 3: 5: User`
-  } else if (firstLine.includes("gantt")) {
-    return `gantt
-    title Project Timeline
-    dateFormat YYYY-MM-DD
-    section Planning
-    Task 1: 2024-01-01, 7d
-    Task 2: 2024-01-08, 5d`
-  } else {
-    return `graph TD
-    A[Start] --> B[Process]
-    B --> C{Decision}
-    C -->|Yes| D[Success]
-    C -->|No| E[Error]
-    D --> F[End]
-    E --> F`
-  }
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {

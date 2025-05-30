@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model = "gpt-3.5-turbo" } = await req.json()
+    const { messages, model = "gpt-3.5-turbo", retryAttempt = 0 } = await req.json()
 
     // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY
@@ -53,6 +53,27 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Enhanced system message with retry-specific instructions
+      const retryInstructions =
+        retryAttempt > 0
+          ? `
+
+CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
+- This is a retry attempt due to previous syntax errors
+- Use ONLY the most basic, validated Mermaid syntax
+- Avoid complex features that might cause parsing errors
+- Start directly with diagram type keyword
+- Use simple node names without special characters
+- Ensure all arrows and connections are properly formatted
+- Double-check every line for syntax correctness
+- NO explanatory text, ONLY valid Mermaid code
+
+RETRY FOCUS:
+${retryAttempt === 1 ? "- Simplify syntax and use basic examples" : ""}
+${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
+`
+          : ""
+
       systemMessage = {
         role: "system",
         content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
@@ -66,6 +87,8 @@ CRITICAL RULES:
 6. When modifying existing diagrams, maintain the same structure and add improvements
 7. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
 8. ALWAYS use proper Mermaid syntax for each diagram type
+9. Use simple, alphanumeric node names without special characters
+10. Ensure all syntax follows official Mermaid documentation${retryInstructions}
 
 ${
   lastDiagramCode
@@ -123,7 +146,7 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
         model,
         messages: [systemMessage, ...messages],
         stream: !isSummaryRequest,
-        temperature: 0.1, // Very low temperature for consistent syntax
+        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
