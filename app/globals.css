@@ -68,7 +68,37 @@
   }
 }
 
-/* Custom scrollbar */
+/* Enhanced scrollbar for chat only */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  @apply bg-gray-50;
+  border-radius: 4px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  @apply bg-gray-300;
+  border-radius: 4px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* Prevent horizontal scrolling in chat */
+.chat-scroll {
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+}
+
+/* Custom scrollbar for general use */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -113,23 +143,6 @@
   .react-dev-overlay {
     display: none !important;
   }
-}
-
-/* Enhanced scrollbar for chat */
-.chat-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-scroll::-webkit-scrollbar-track {
-  @apply bg-gray-50;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
 }
 
 /* Smooth transitions for layout changes */
@@ -219,4 +232,16 @@
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
   }
+}
+
+/* Prevent canvas from affecting page scroll */
+.canvas-container {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Ensure proper isolation between panels */
+.panel-isolation {
+  contain: layout style paint;
 }

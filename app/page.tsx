@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -65,9 +65,27 @@ export default function Home() {
   const [retryCount, setRetryCount] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
+  // Ref for auto-scrolling chat messages
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  // Auto-scroll chat to bottom when new messages are added
+  useEffect(() => {
+    if (messagesEndRef.current && chatScrollContainerRef.current) {
+      const scrollContainer = chatScrollContainerRef.current
+      const isNearBottom =
+        scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 100
+
+      // Only auto-scroll if user is near the bottom (to not interrupt manual scrolling)
+      if (isNearBottom || messages.length === 1) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+      }
+    }
+  }, [messages, isLoading, error])
 
   // Show canvas when there's content
   useEffect(() => {
@@ -513,7 +531,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
     <main className="flex-1 flex h-[calc(100vh-4rem)] overflow-hidden bg-gray-50">
       {/* Chat Panel */}
       <div
-        className={`${chatWidth} transition-all duration-500 ease-in-out border-r border-gray-200 flex flex-col bg-white shadow-lg`}
+        className={`${chatWidth} transition-all duration-500 ease-in-out border-r border-gray-200 flex flex-col bg-white shadow-lg overflow-hidden`}
       >
         {/* Chat Header - Fixed */}
         <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0">
@@ -559,10 +577,17 @@ Please update this diagram to incorporate the suggestion while maintaining the e
           </div>
         </div>
 
-        {/* Messages - Scrollable */}
-        <div className="flex-1 overflow-y-auto chat-scroll">
+        {/* Messages - Scrollable Container */}
+        <div
+          ref={chatScrollContainerRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden chat-scroll"
+          style={{
+            scrollBehavior: "smooth",
+            overscrollBehavior: "contain",
+          }}
+        >
           {messages.length === 0 ? (
-            <div className="p-6 text-center space-y-6">
+            <div className="p-6 text-center space-y-6 min-h-full flex flex-col justify-center">
               <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center shadow-lg">
                 <Sparkles className="h-10 w-10 text-blue-600" />
               </div>
@@ -652,6 +677,8 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                   </div>
                 </div>
               )}
+              {/* Invisible element for auto-scrolling */}
+              <div ref={messagesEndRef} className="h-1" />
             </div>
           )}
         </div>
@@ -669,7 +696,9 @@ Please update this diagram to incorporate the suggestion while maintaining the e
 
       {/* Canvas Panel - Only show when there's content and visible */}
       {canvasVisible && (
-        <div className={`${canvasWidth} transition-all duration-500 ease-in-out flex flex-col bg-gray-50 shadow-lg`}>
+        <div
+          className={`${canvasWidth} transition-all duration-500 ease-in-out flex flex-col bg-gray-50 shadow-lg overflow-hidden`}
+        >
           {/* Canvas Header - Fixed */}
           <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
@@ -711,6 +740,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
             </div>
           </div>
 
+          {/* Canvas Content - Fixed height, no scrolling */}
           <div className="flex-1 relative overflow-hidden">
             {outputCode ? (
               <Mermaid
