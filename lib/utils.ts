@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Message, OpenAIModel } from "@/types/type" // Assuming types/type.ts exists
-import { DIAGRAM_TYPES } from "./constants" // Assuming lib/constants.ts exists
+import type { Message, OpenAIModel } from "@/types/type"
+import { DIAGRAM_TYPES } from "./constants"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -12,13 +12,14 @@ export function serializeCode(code: string): string {
     return btoa(unescape(encodeURIComponent(code)))
   } catch (error) {
     console.error("Error serializing code:", error)
-    return "" // Return empty string or throw custom error
+    return ""
   }
 }
 
 export function parseCodeFromMessage(message: string): string {
   const codeBlockRegex = /```(?:mermaid)?\n([\s\S]*?)\n```/g
   const match = codeBlockRegex.exec(message)
+  // If no markdown block, assume the whole message is the code, but trim it.
   return match ? match[1].trim() : message.trim()
 }
 
@@ -33,43 +34,50 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
   const lines = code
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter(Boolean) // Remove empty lines
 
   if (lines.length === 0) {
-    errors.push("Code contains no content after trimming.")
+    errors.push("Code contains no content after trimming empty lines.")
     return { isValid: false, errors }
   }
 
   const firstLine = lines[0].toLowerCase()
-  const validDiagramStarters = Object.values(DIAGRAM_TYPES).map((type) => type.toLowerCase())
-  // Add common graph types
-  validDiagramStarters.push("graph td", "graph lr", "graph bt", "graph rl")
+  // More robust check for diagram starters, allowing for common variations like "stateDiagram-v2"
+  const validDiagramStarters = Object.values(DIAGRAM_TYPES)
+    .map((type) => type.toLowerCase())
+    .concat([
+      "graph td",
+      "graph lr",
+      "graph bt",
+      "graph rl",
+      "statediagram-v2",
+      "c4context",
+      "c4container",
+      "c4component",
+      "c4dynamic",
+      "c4deployment",
+    ])
 
   if (!validDiagramStarters.some((start) => firstLine.startsWith(start))) {
     errors.push(
-      `Invalid diagram type. Must start with a known Mermaid diagram type (e.g., 'graph TD', 'sequenceDiagram'). Found: "${firstLine.substring(0, 20)}..."`,
+      `Invalid diagram type. Must start with a known Mermaid diagram type (e.g., 'graph TD', 'sequenceDiagram'). Found: "${firstLine.substring(0, 30)}..."`,
     )
   }
 
   // Basic structural checks (can be expanded)
-  if (code.includes("<<<") || code.includes(">>>")) {
-    errors.push("Potentially invalid arrow or token usage ('<<<' or '>>>').")
-  }
   if ((code.match(/{/g) || []).length !== (code.match(/}/g) || []).length) {
-    errors.push("Mismatched curly braces.")
+    errors.push("Mismatched curly braces {}")
   }
   if ((code.match(/\[/g) || []).length !== (code.match(/]/g) || []).length) {
-    errors.push("Mismatched square brackets.")
+    errors.push("Mismatched square brackets []")
   }
   if ((code.match(/$$/g) || []).length !== (code.match(/$$/g) || []).length) {
-    errors.push("Mismatched parentheses.")
+    errors.push("Mismatched parentheses ()")
   }
 
-  // Check for common error-indicating keywords (if AI includes them)
-  const errorKeywords = ["error", "invalid", "syntax", "parse", "unexpected token"]
-  if (errorKeywords.some((keyword) => code.toLowerCase().includes(keyword))) {
-    // This is a soft warning as "error" can be a valid node name.
-    // errors.push("Code contains keywords often associated with errors. Please review.");
+  // Check for lines that are just "ERROR" or similar, which Mermaid might output if it fails internally
+  if (lines.some((line) => line.toUpperCase() === "ERROR" || line.includes("Syntax error"))) {
+    errors.push("Diagram code contains 'ERROR' or 'Syntax error', indicating a problem.")
   }
 
   return { isValid: errors.length === 0, errors }
@@ -78,75 +86,71 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
     console.warn("sanitizeMermaidCode: Received empty or invalid code.")
-    return "" // Or throw an error
+    return ""
   }
 
   let cleanedCode = code.trim()
 
-  // Remove markdown code block markers
+  // Remove markdown code block markers first
   cleanedCode = cleanedCode.replace(/^```(?:mermaid)?\n?/gm, "").replace(/\n?```$/gm, "")
+  cleanedCode = cleanedCode.trim() // Trim again after removing markdown
 
-  // Remove explanatory text before the diagram (heuristic)
+  // Split into lines and find the actual start of the diagram
   const lines = cleanedCode.split("\n")
-  let diagramStartIndex = 0
+  let diagramStartIndex = -1
+
+  const diagramKeywords = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+    "mindmap",
+    "timeline",
+    "c4context",
+    "c4container",
+    "c4component",
+    "c4dynamic",
+    "c4deployment",
+  ].map((kw) => kw.toLowerCase())
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().toLowerCase()
-    const isDiagramKeyword = [
-      "graph",
-      "flowchart",
-      "sequenceDiagram",
-      "classDiagram",
-      "journey",
-      "gantt",
-      "stateDiagram",
-      "erDiagram",
-      "pie",
-      "mindmap",
-      "timeline",
-    ].some((kw) => line.startsWith(kw))
-    if (isDiagramKeyword) {
+    if (diagramKeywords.some((kw) => line.startsWith(kw))) {
       diagramStartIndex = i
       break
     }
-    // If we find a line that looks like a node or connection before a keyword, it might be the start
-    if (i < 5 && (line.includes("-->") || line.includes("->") || (line.includes("[") && line.includes("]")))) {
-      diagramStartIndex = i
-      break
-    }
+    // If we are past a few lines and haven't found a keyword, assume it's not there or malformed.
+    if (i > 5 && diagramStartIndex === -1) break
   }
-  cleanedCode = lines.slice(diagramStartIndex).join("\n").trim()
+
+  if (diagramStartIndex > 0) {
+    cleanedCode = lines.slice(diagramStartIndex).join("\n").trim()
+  } else if (diagramStartIndex === -1 && lines.length > 0) {
+    // If no keyword found, but there's content, we might have a problem.
+    // For now, we'll assume the AI *should* have provided it.
+    // The validation will catch this.
+    // We could potentially prepend a default like 'graph TD' here if validation fails later,
+    // but it's better to get the AI to produce it.
+  }
 
   // Normalize line endings and remove excessive blank lines
   cleanedCode = cleanedCode.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n")
 
   // Basic structural fixes (examples, can be expanded)
-  // Ensure space after diagram type if followed by content
   cleanedCode = cleanedCode.replace(
     /^(graph\s*(?:TD|LR|RL|BT)|sequenceDiagram|classDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|mindmap|timeline)([^\s\n])/gm,
     "$1 $2",
   )
 
-  // Attempt to fix common issues like missing spaces around arrows for flowcharts
   if (cleanedCode.toLowerCase().startsWith("graph") || cleanedCode.toLowerCase().startsWith("flowchart")) {
-    cleanedCode = cleanedCode.replace(/([a-zA-Z0-9\])}>])-->([a-zA-Z0-9[({<])/g, "$1 --> $2") // node-->node
-    cleanedCode = cleanedCode.replace(/([a-zA-Z0-9\])}>])-->([a-zA-Z0-9[({<])/g, "$1 --> $2") // node--> node
-    cleanedCode = cleanedCode.replace(/([a-zA-Z0-9\])}>])--> ([a-zA-Z0-9[({<])/g, "$1 --> $2") // node -->node
+    cleanedCode = cleanedCode.replace(/([a-zA-Z0-9\])}>])\s*--?>\s*([a-zA-Z0-9[({<])/g, "$1 --> $2")
   }
 
-  // For sequence diagrams, ensure no leading/trailing spaces on arrow lines for messages
-  if (cleanedCode.toLowerCase().startsWith("sequencediagram")) {
-    cleanedCode = lines
-      .map((line) => {
-        if (line.match(/^\s*\w+\s*(--?>?>?|--?x>?>?)\s*\w+\s*:.*/)) {
-          // Matches A->B: Message
-          return line.trim() // Trim the line
-        }
-        return line
-      })
-      .join("\n")
-  }
-
-  // Final trim
   cleanedCode = cleanedCode.trim()
 
   if (!cleanedCode) {
@@ -171,15 +175,12 @@ graph TD
   `
 }
 
-// (OpenAIStream function can remain as is, assuming it's for a different purpose or legacy)
-// If OpenAIStream is used for the main chat, it should also be updated for robustness.
-// For now, assuming the main chat uses the /api/openai route directly.
+// OpenAIStream function (ensure it's robust if used directly)
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
-  // This function seems to be a direct OpenAI call, not using the app's backend.
-  // If it's used, ensure it has robust error handling and aligns with the backend's system prompt.
   const systemMessage: Message = {
     role: "system",
     content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+    CRITICAL: Your response MUST start *directly* with a valid Mermaid diagram type keyword (e.g., graph TD, sequenceDiagram). NO other text before it.
     
 Available diagram types:
 - Flowchart: graph TD or graph LR
@@ -187,9 +188,10 @@ Available diagram types:
 - Class diagram: classDiagram
 - User journey: journey
 - Gantt chart: gantt
-- C4 diagram: C4Context, C4Container, C4Component
 
 Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+    id: `system-${Date.now()}`,
+    timestamp: Date.now(),
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -208,7 +210,6 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
   })
 
   if (!response.ok) {
-    // Add more specific error handling based on status code
     const errorBody = await response.text()
     console.error("OpenAI API direct stream error:", response.status, errorBody)
     throw new Error(`OpenAI API error: ${response.status} - ${errorBody}`)
@@ -221,7 +222,7 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
     async start(controller) {
       const reader = response.body?.getReader()
       if (!reader) {
-        controller.close()
+        controller.error(new Error("Failed to get ReadableStream reader."))
         return
       }
 
@@ -248,7 +249,6 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
                   controller.enqueue(encoder.encode(content))
                 }
               } catch (e) {
-                // Skip invalid JSON, log if necessary in development
                 console.warn("Skipping invalid JSON in OpenAI stream:", e)
               }
             }
@@ -259,6 +259,7 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
         controller.error(error)
       } finally {
         reader.releaseLock()
+        controller.close()
       }
     },
   })
