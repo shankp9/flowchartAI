@@ -114,3 +114,109 @@
     display: none !important;
   }
 }
+
+/* Enhanced scrollbar for chat */
+.chat-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  @apply bg-gray-50;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* Smooth transitions for layout changes */
+.layout-transition {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced focus states */
+.focus-ring:focus {
+  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+}
+
+/* Professional button hover effects */
+.btn-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Diagram container enhancements */
+.diagram-container {
+  background: radial-gradient(circle at 20px 20px, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 60px 60px, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px, 80px 80px;
+}
+
+/* Fullscreen overlay */
+.fullscreen-overlay {
+  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* Control panel animations */
+.control-panel {
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Zoom indicator */
+.zoom-indicator {
+  font-variant-numeric: tabular-nums;
+  min-width: 3rem;
+}
+
+/* Professional shadows */
+.shadow-professional {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-professional-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Loading animations */
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Responsive design helpers */
+@media (max-width: 768px) {
+  .mobile-stack {
+    flex-direction: column;
+  }
+
+  .mobile-full {
+    width: 100% !important;
+  }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .crisp-edges {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}

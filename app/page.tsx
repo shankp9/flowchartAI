@@ -60,10 +60,20 @@ export default function Home() {
   // Removed diagramSummary and suggestions state - now handled as chat messages
   const [error, setError] = useState<string>("")
   const [retryCount, setRetryCount] = useState(0)
+  // Add new state for better UI control
+  const [showDiagramPanel, setShowDiagramPanel] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  // Update the useEffect that sets outputCode to also control diagram panel visibility
+  useEffect(() => {
+    if (outputCode) {
+      setShowDiagramPanel(true)
+    }
+  }, [outputCode])
 
   const generateSummaryAndSuggestions = useCallback(async (code: string) => {
     try {
@@ -416,14 +426,17 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
     )
   }
 
+  // Update the main container structure to have proper heights and scrolling
   return (
-    <main className="flex-1 flex h-[calc(100vh-4rem)]">
+    <main className="flex-1 flex h-[calc(100vh-4rem)] overflow-hidden">
       {/* Chat Panel */}
       <div
-        className={`${chatCollapsed ? "w-12" : "w-1/2"} transition-all duration-300 border-r border-gray-200 flex flex-col`}
+        className={`${
+          isFullscreen ? "hidden" : chatCollapsed ? "w-12" : showDiagramPanel && !diagramCollapsed ? "w-1/2" : "w-full"
+        } transition-all duration-300 border-r border-gray-200 flex flex-col bg-white`}
       >
-        {/* Chat Header */}
-        <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
+        {/* Chat Header - Fixed */}
+        <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between flex-shrink-0">
           {!chatCollapsed && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -443,7 +456,7 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
 
         {!chatCollapsed && (
           <>
-            {/* Messages */}
+            {/* Messages - Scrollable */}
             <div className="flex-1 overflow-y-auto">
               {messages.length === 0 ? (
                 <div className="p-6 text-center space-y-4">
@@ -532,8 +545,8 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
               )}
             </div>
 
-            {/* Input */}
-            <div className="border-t border-gray-200 p-4 bg-white">
+            {/* Input - Fixed at bottom */}
+            <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
               <ChatInput
                 messageCotent={draftMessage}
                 onChange={setDraftMessage}
@@ -545,31 +558,41 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
         )}
       </div>
 
-      {/* Diagram Panel */}
-      <div className={`${diagramCollapsed ? "w-12" : "w-1/2"} transition-all duration-300 flex flex-col`}>
-        {/* Diagram Header */}
-        <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setDiagramCollapsed(!diagramCollapsed)}
-            className="h-8 w-8 p-0"
-          >
-            {diagramCollapsed ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-          </Button>
-          {!diagramCollapsed && (
-            <div className="flex items-center gap-2">
-              <h2 className="font-semibold">Diagram</h2>
-            </div>
-          )}
-        </div>
+      {/* Diagram Panel - Only show when there's content */}
+      {showDiagramPanel && (
+        <div
+          className={`${
+            isFullscreen ? "w-full" : diagramCollapsed ? "w-12" : chatCollapsed ? "w-full" : "w-1/2"
+          } transition-all duration-300 flex flex-col bg-gray-50`}
+        >
+          {/* Diagram Header - Fixed */}
+          <div className="border-b border-gray-200 p-4 bg-gray-50 flex items-center justify-between flex-shrink-0">
+            {!isFullscreen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDiagramCollapsed(!diagramCollapsed)}
+                className="h-8 w-8 p-0"
+              >
+                {diagramCollapsed ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+              </Button>
+            )}
+            {!diagramCollapsed && (
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Diagram</h2>
+                {outputCode && (
+                  <Badge variant="secondary" className="text-xs">
+                    Interactive
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
 
-        {!diagramCollapsed && (
-          <>
-            {/* Diagram Display */}
-            <div className="flex-1 relative bg-gray-50 overflow-hidden">
+          {!diagramCollapsed && (
+            <div className="flex-1 relative overflow-hidden">
               {outputCode ? (
-                <Mermaid chart={outputCode} />
+                <Mermaid chart={outputCode} isFullscreen={isFullscreen} onFullscreenChange={setIsFullscreen} />
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center space-y-4 max-w-md">
@@ -586,9 +609,9 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
                 </div>
               )}
             </div>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </main>
   )
 }

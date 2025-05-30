@@ -4,18 +4,35 @@ import type React from "react"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
-import { Copy, Palette, AlertCircle, Code, CheckCircle, RefreshCw } from "lucide-react"
+import {
+  Copy,
+  Palette,
+  AlertCircle,
+  Code,
+  CheckCircle,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  Download,
+  Move,
+} from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
 
 interface MermaidProps {
   chart: string
+  isFullscreen?: boolean
+  onFullscreenChange?: (fullscreen: boolean) => void
 }
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
-export function Mermaid({ chart }: MermaidProps) {
+export function Mermaid({ chart, isFullscreen = false, onFullscreenChange }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
   const [theme, setTheme] = useState<Theme>("default")
   const [isClient, setIsClient] = useState(false)
@@ -25,6 +42,13 @@ export function Mermaid({ chart }: MermaidProps) {
   const [sanitizedCode, setSanitizedCode] = useState("")
   const [wasFixed, setWasFixed] = useState(false)
   const [wasConverted, setWasConverted] = useState(false)
+
+  // Zoom and pan state
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [showControls, setShowControls] = useState(true)
 
   // Initialize client-side state
   useEffect(() => {
@@ -41,22 +65,88 @@ export function Mermaid({ chart }: MermaidProps) {
       theme: "default",
       logLevel: "error",
       flowchart: {
-        useMaxWidth: true,
+        useMaxWidth: false,
         htmlLabels: true,
         curve: "basis",
       },
       journey: {
-        useMaxWidth: true,
+        useMaxWidth: false,
       },
       sequence: {
-        useMaxWidth: true,
+        useMaxWidth: false,
         showSequenceNumbers: true,
+        wrap: true,
+        width: 150,
       },
       gantt: {
-        useMaxWidth: true,
+        useMaxWidth: false,
       },
     })
-  }, [])
+
+    // Auto-hide controls after 3 seconds of no interaction
+    const timer = setTimeout(() => {
+      if (!isFullscreen) setShowControls(false)
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [isFullscreen])
+
+  // Handle mouse interactions for zoom and pan
+  useEffect(() => {
+    const container = svgContainerRef.current
+    if (!container) return
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      const newZoom = Math.max(0.1, Math.min(5, zoom * delta))
+      setZoom(newZoom)
+      setShowControls(true)
+    }
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) {
+        // Left click
+        setIsDragging(true)
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+        container.style.cursor = "grabbing"
+      }
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        setPan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y,
+        })
+      }
+      setShowControls(true)
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      container.style.cursor = zoom > 1 ? "grab" : "default"
+    }
+
+    const handleMouseLeave = () => {
+      setIsDragging(false)
+      container.style.cursor = "default"
+    }
+
+    container.addEventListener("wheel", handleWheel, { passive: false })
+    container.addEventListener("mousedown", handleMouseDown)
+    container.addEventListener("mousemove", handleMouseMove)
+    container.addEventListener("mouseup", handleMouseUp)
+    container.addEventListener("mouseleave", handleMouseLeave)
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel)
+      container.removeEventListener("mousedown", handleMouseDown)
+      container.removeEventListener("mousemove", handleMouseMove)
+      container.removeEventListener("mouseup", handleMouseUp)
+      container.removeEventListener("mouseleave", handleMouseLeave)
+    }
+  }, [zoom, pan, isDragging, dragStart])
 
   const copyToClipboard = useCallback((text: string) => {
     if (navigator.clipboard) {
@@ -97,6 +187,47 @@ export function Mermaid({ chart }: MermaidProps) {
       setTimeout(() => setLabel("Copy SVG"), 2000)
     }
   }, [copyToClipboard, sanitizedCode])
+
+  const handleDownload = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const svgElement = container.querySelector("svg")
+    if (svgElement) {
+      const svgData = svgElement.outerHTML
+      const blob = new Blob([svgData], { type: "image/svg+xml" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "diagram.svg"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }
+  }, [])
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(5, prev * 1.2))
+    setShowControls(true)
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(0.1, prev / 1.2))
+    setShowControls(true)
+  }, [])
+
+  const handleResetView = useCallback(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setShowControls(true)
+  }, [])
+
+  const handleFullscreen = useCallback(() => {
+    if (onFullscreenChange) {
+      onFullscreenChange(!isFullscreen)
+    }
+  }, [isFullscreen, onFullscreenChange])
 
   const renderChart = useCallback(
     async (chartCode: string, selectedTheme: Theme) => {
@@ -163,23 +294,6 @@ export function Mermaid({ chart }: MermaidProps) {
             throw new Error("Invalid diagram type. Please start with a valid Mermaid diagram type.")
           }
 
-          // Additional validation for sequence diagrams
-          if (firstLine.startsWith("sequencediagram")) {
-            const hasValidArrows = lines.some(
-              (line) =>
-                line.includes("->") ||
-                line.includes("-->") ||
-                line.includes("->>") ||
-                line.includes("-->>") ||
-                line.includes("-x") ||
-                line.includes("--x"),
-            )
-
-            if (!hasValidArrows && lines.length > 2) {
-              throw new Error("Sequence diagram must contain valid arrow syntax (->>, -->, -x, etc.)")
-            }
-          }
-
           // Initialize mermaid with current theme
           mermaid.initialize({
             startOnLoad: false,
@@ -187,21 +301,21 @@ export function Mermaid({ chart }: MermaidProps) {
             theme: selectedTheme,
             logLevel: "error",
             flowchart: {
-              useMaxWidth: true,
+              useMaxWidth: false,
               htmlLabels: true,
               curve: "basis",
             },
             journey: {
-              useMaxWidth: true,
+              useMaxWidth: false,
             },
             sequence: {
-              useMaxWidth: true,
+              useMaxWidth: false,
               showSequenceNumbers: true,
               wrap: true,
               width: 150,
             },
             gantt: {
-              useMaxWidth: true,
+              useMaxWidth: false,
             },
           })
 
@@ -226,14 +340,20 @@ export function Mermaid({ chart }: MermaidProps) {
             setWasFixed(true)
           }
 
-          // Create a wrapper div for the SVG
+          // Create a wrapper div for the SVG with zoom and pan
           const wrapper = document.createElement("div")
           wrapper.innerHTML = svg
-          wrapper.style.width = "100%"
-          wrapper.style.height = "100%"
-          wrapper.style.display = "flex"
-          wrapper.style.justifyContent = "center"
-          wrapper.style.alignItems = "center"
+          wrapper.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
+          wrapper.style.transformOrigin = "center center"
+          wrapper.style.transition = isDragging ? "none" : "transform 0.2s ease"
+          wrapper.style.width = "fit-content"
+          wrapper.style.height = "fit-content"
+
+          // Center the diagram initially
+          wrapper.style.position = "absolute"
+          wrapper.style.top = "50%"
+          wrapper.style.left = "50%"
+          wrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
 
           container.appendChild(wrapper)
 
@@ -357,8 +477,20 @@ export function Mermaid({ chart }: MermaidProps) {
         setIsRendering(false)
       }
     },
-    [isClient],
+    [isClient, zoom, pan, isDragging],
   )
+
+  // Update transform when zoom or pan changes
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const wrapper = container.querySelector("div")
+    if (wrapper) {
+      wrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
+      wrapper.style.transition = isDragging ? "none" : "transform 0.2s ease"
+    }
+  }, [zoom, pan, isDragging])
 
   // Render chart when chart or theme changes
   useEffect(() => {
@@ -391,58 +523,134 @@ export function Mermaid({ chart }: MermaidProps) {
   }
 
   return (
-    <div className="w-full h-full relative">
-      {/* Controls */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white rounded-lg shadow-sm border p-2">
-        <div className="flex items-center gap-2">
-          <Palette className="h-4 w-4 text-gray-600" />
-          <select
-            value={theme}
-            onChange={handleThemeChange}
-            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isRendering}
-          >
-            {Available_Themes.map((themeOption) => (
-              <option key={themeOption} value={themeOption}>
-                {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-              </option>
-            ))}
-          </select>
+    <div className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}>
+      {/* Enhanced Controls */}
+      <div
+        className={`absolute top-4 right-4 z-20 transition-opacity duration-300 ${showControls ? "opacity-100" : "opacity-0 hover:opacity-100"}`}
+      >
+        <div className="bg-white rounded-lg shadow-lg border p-2 space-y-2">
+          {/* Top row - Theme and basic controls */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Palette className="h-4 w-4 text-gray-600" />
+              <select
+                value={theme}
+                onChange={handleThemeChange}
+                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isRendering}
+              >
+                {Available_Themes.map((themeOption) => (
+                  <option key={themeOption} value={themeOption}>
+                    {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="h-4 w-px bg-gray-300" />
+
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              onClick={handleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              {isFullscreen ? "Exit" : "Full"}
+            </button>
+          </div>
+
+          {/* Second row - Zoom controls */}
+          <div className="flex items-center gap-1">
+            <button
+              className="flex items-center justify-center w-8 h-8 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              onClick={handleZoomOut}
+              disabled={zoom <= 0.1}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-3 w-3" />
+            </button>
+
+            <div className="px-2 py-1 text-xs bg-gray-100 rounded min-w-[3rem] text-center">
+              {Math.round(zoom * 100)}%
+            </div>
+
+            <button
+              className="flex items-center justify-center w-8 h-8 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              onClick={handleZoomIn}
+              disabled={zoom >= 5}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-3 w-3" />
+            </button>
+
+            <button
+              className="flex items-center justify-center w-8 h-8 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 transition-colors"
+              onClick={handleResetView}
+              title="Reset view"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Third row - Action controls */}
+          <div className="flex items-center gap-1">
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              onClick={handleCopyClick}
+              disabled={isRendering}
+              title="Copy SVG code"
+            >
+              <Copy className="h-3 w-3" />
+              {label}
+            </button>
+
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              onClick={handleDownload}
+              disabled={isRendering}
+              title="Download SVG"
+            >
+              <Download className="h-3 w-3" />
+              Save
+            </button>
+
+            <button
+              className={`flex items-center gap-1 px-2 py-1 text-xs border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors ${
+                wasFixed
+                  ? "border-green-300 text-green-700"
+                  : wasConverted
+                    ? "border-blue-300 text-blue-700"
+                    : "border-gray-300"
+              }`}
+              onClick={() => setShowCode(!showCode)}
+              title={showCode ? "Hide code" : "Show code"}
+            >
+              {wasFixed ? (
+                <CheckCircle className="h-3 w-3" />
+              ) : wasConverted ? (
+                <RefreshCw className="h-3 w-3" />
+              ) : (
+                <Code className="h-3 w-3" />
+              )}
+              Code
+            </button>
+          </div>
         </div>
-        <button
-          className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          onClick={handleCopyClick}
-          disabled={isRendering}
-          title="Copy SVG code"
-        >
-          <Copy className="h-3 w-3" />
-          {label}
-        </button>
-        <button
-          className={`flex items-center gap-1 px-2 py-1 text-xs border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors ${
-            wasFixed
-              ? "border-green-300 text-green-700"
-              : wasConverted
-                ? "border-blue-300 text-blue-700"
-                : "border-gray-300"
-          }`}
-          onClick={() => setShowCode(!showCode)}
-          title={showCode ? "Hide code" : "Show code"}
-        >
-          {wasFixed ? (
-            <CheckCircle className="h-3 w-3" />
-          ) : wasConverted ? (
-            <RefreshCw className="h-3 w-3" />
-          ) : (
-            <Code className="h-3 w-3" />
-          )}
-          {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : wasConverted ? "Converted" : "Show Code"}
-        </button>
       </div>
+
+      {/* Zoom/Pan Instructions */}
+      {!showControls && !isRendering && !error && (
+        <div className="absolute bottom-4 left-4 z-10 bg-black bg-opacity-75 text-white text-xs px-3 py-2 rounded-lg opacity-50 hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-2">
+            <Move className="h-3 w-3" />
+            <span>Scroll to zoom • Drag to pan • Hover for controls</span>
+          </div>
+        </div>
+      )}
 
       {/* Code View */}
       {showCode && (
-        <div className="absolute inset-0 bg-gray-900 text-gray-100 p-4 z-20 overflow-auto">
+        <div className="absolute inset-0 bg-gray-900 text-gray-100 p-4 z-30 overflow-auto">
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium">Mermaid Diagram Code</h3>
@@ -500,21 +708,32 @@ export function Mermaid({ chart }: MermaidProps) {
 
       {/* Diagram Container */}
       <div
-        ref={containerRef}
-        className="w-full h-full min-h-[300px] flex items-center justify-center p-4"
-        style={{ minHeight: "300px" }}
+        ref={svgContainerRef}
+        className="w-full h-full relative overflow-hidden bg-gray-50"
+        style={{
+          cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
+          minHeight: "300px",
+        }}
+        onMouseEnter={() => setShowControls(true)}
+        onMouseLeave={() => {
+          if (!isFullscreen) {
+            setTimeout(() => setShowControls(false), 2000)
+          }
+        }}
       >
-        {isRendering && (
-          <div className="flex items-center gap-2 text-gray-500">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="text-sm">Rendering diagram...</span>
-          </div>
-        )}
+        <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
+          {isRendering && (
+            <div className="flex items-center gap-2 text-gray-500">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="text-sm">Rendering diagram...</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error Display */}
       {error && !showCode && (
-        <div className="absolute bottom-4 left-4 right-4 bg-red-50 border border-red-200 rounded-md p-3 flex items-start gap-2">
+        <div className="absolute bottom-4 left-4 right-4 bg-red-50 border border-red-200 rounded-md p-3 flex items-start gap-2 z-10">
           <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm font-medium text-red-800">Diagram Rendering Error</p>
