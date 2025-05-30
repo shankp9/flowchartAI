@@ -68,7 +68,7 @@ Respond ONLY with valid JSON in this exact format:
 }`,
       }
     } else {
-      // Enhanced system message with strict Mermaid v11.6.0 compatibility
+      // Enhanced system message with retry-specific instructions
       const retryInstructions =
         retryAttempt > 0
           ? `
@@ -114,83 +114,87 @@ MODIFICATION RULES:
 
       systemMessage = {
         role: "system",
-        content: `You are an expert Mermaid v11.6.0 diagram generator. You MUST generate ONLY valid, compatible Mermaid syntax code.
+        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code that is compatible with Mermaid version 11.6.0.
 
-CRITICAL COMPATIBILITY RULES FOR MERMAID v11.6.0:
+CRITICAL COMPATIBILITY RULES FOR MERMAID 11.6.0:
 1. NEVER include explanatory text before or after the diagram code
 2. ALWAYS start your response directly with the diagram type keyword
-3. Use ONLY proven, stable Mermaid syntax patterns
-4. AVOID experimental or newer features that may not be supported
-5. Use simple, alphanumeric node names (A, B, C, User, System, etc.)
-6. NEVER use special characters in node names except underscore
-7. Ensure all syntax follows Mermaid v11.6.0 documentation exactly
+3. Use ONLY basic, well-established Mermaid syntax - NO experimental features
+4. NEVER use deprecated syntax or newer features not available in v11.6.0
+5. Stick to simple, proven patterns that have been stable for years
 
-FLOWCHART RULES (graph TD/LR):
-- CORRECT: "A[Start] --> B[Process] --> C[End]"
-- CORRECT: "A --> B --> C"
-- INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
-- Use only: [], {}, (), (())
-- Arrows: -->, -->, -.->
+MANDATORY SYNTAX VALIDATION:
+- Every line must follow exact Mermaid specification
+- No custom or experimental syntax elements
+- Use only alphanumeric characters and basic symbols
+- Ensure all brackets, braces, and quotes are properly matched
+- Test compatibility with Mermaid 11.6.0 syntax rules
 
-SEQUENCE DIAGRAM RULES:
-- CORRECT: "participant A" then "A->>B: Message"
-- CORRECT: "A-->>B: Response"
-- INCORRECT: "->>B: Message" (missing sender)
-- Use only: ->>, -->, -x, --x
-- Always declare participants first
+FLOWCHART RULES (v11.6.0 compatible):
+- Use: graph TD, graph LR, graph TB, graph RL only
+- Node syntax: A[Text], B(Text), C{Text}, D((Text))
+- Connection syntax: A --> B, A --- B, A -.- B
+- Labels: A -->|label| B
+- NEVER use: complex styling, custom themes, advanced features
 
-CLASS DIAGRAM RULES:
-- CORRECT: "class User { +name: string +login() }"
-- CORRECT: "User --> System"
-- NEVER combine class definition with relationships on same line
-- Use proper inheritance: User <|-- Admin
-- Use composition: User *-- Address
+SEQUENCE DIAGRAM RULES (v11.6.0 compatible):
+- Start with: sequenceDiagram
+- Participant syntax: participant A, participant B as Name
+- Arrow syntax: A->>B: Message, A-->>B: Response, A-xB: Cancel
+- NEVER start arrows without sender: CORRECT "A->>B", INCORRECT "->>B"
+- NEVER use: advanced formatting, complex interactions
 
-ER DIAGRAM RULES:
-- CORRECT: "USER ||--o{ ORDER : places"
-- CORRECT: "USER { int id PK string name }"
-- Use only: ||--||, }o--o{, ||--o{
-- Always define entities before relationships
+CLASS DIAGRAM RULES (v11.6.0 compatible):
+- Start with: classDiagram
+- Class syntax: class ClassName, class ClassName { }
+- Members: +publicMethod(), -privateField: type
+- Relationships: ClassA --> ClassB, ClassA --|> ClassB
+- NEVER combine: class definitions with relationships on same line
+- NEVER use: advanced annotations, complex styling
 
-JOURNEY RULES:
-- CORRECT: "journey\n    title My Journey\n    section Section1\n      Task1: 5: Actor"
-- Always include title and sections
-- Score format: "Task: score: Actor"
+ER DIAGRAM RULES (v11.6.0 compatible):
+- Start with: erDiagram
+- Entity syntax: ENTITY { type field }
+- Relationship syntax: ENTITY ||--o{ OTHER : "relationship"
+- NEVER use: complex field types, advanced relationships
 
-GANTT RULES:
-- CORRECT: "gantt\n    title Project\n    dateFormat YYYY-MM-DD\n    Task1 :2024-01-01, 30d"
-- Always include title and dateFormat
-- Use standard date formats only
+JOURNEY RULES (v11.6.0 compatible):
+- Start with: journey, title: Title
+- Section syntax: section SectionName
+- Task syntax: TaskName: score: Actor
+- NEVER use: complex formatting, advanced features
 
-STATE DIAGRAM RULES:
-- Use: stateDiagram-v2
-- CORRECT: "[*] --> State1\n    State1 --> State2"
-- Use [*] for start/end states
+GANTT RULES (v11.6.0 compatible):
+- Start with: gantt, title Project Schedule
+- Date format: dateFormat YYYY-MM-DD
+- Section syntax: section SectionName
+- Task syntax: TaskName :YYYY-MM-DD, duration
+- NEVER use: complex dependencies, advanced formatting
 
-PIE CHART RULES:
-- CORRECT: "pie title Chart\n    \"Label1\" : 42.96\n    \"Label2\" : 50.05"
-- Always include title
-- Use quotes for labels with spaces
+ABSOLUTELY FORBIDDEN:
+- Custom CSS styling within diagrams
+- Advanced theming beyond basic themes
+- Experimental syntax not in v11.6.0
+- Complex formatting or layout commands
+- Non-standard arrow types or connectors
+- Advanced labeling or annotation features
+- Custom node shapes beyond basic set
+- Complex sub-diagrams or nested structures
 
-FORBIDDEN ELEMENTS (WILL CAUSE ERRORS):
-- Complex styling (%%{wrap}%%, themes in code)
-- Subgraphs with complex nesting
-- Custom CSS classes
-- Advanced formatting
-- Experimental syntax
-- Non-ASCII characters in node names
-- Special symbols: @, #, $, %, ^, &, *, +, =, |, \\, /, ?, <, >
+ERROR PREVENTION:
+- Double-check every line for v11.6.0 compatibility
+- Use only syntax that existed in early Mermaid versions
+- Avoid any features introduced after v11.6.0
+- Test syntax against basic Mermaid parser rules
+- Ensure all elements have proper closing tags/syntax
 
-MANDATORY VALIDATION CHECKLIST:
-✓ Starts with valid diagram type
-✓ No explanatory text
-✓ Simple node names only
-✓ Proper arrow syntax
-✓ No forbidden elements
-✓ Compatible with Mermaid v11.6.0
-✓ Tested syntax patterns only
+RESPONSE FORMAT:
+- Start immediately with diagram type (no explanation)
+- Use only validated, compatible syntax
+- End immediately after diagram (no explanation)
+- Maximum simplicity while meeting user requirements${retryInstructions}${contextInstructions}
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!${retryInstructions}${contextInstructions}`,
+RESPOND WITH MERMAID 11.6.0 COMPATIBLE CODE ONLY!`,
       }
     }
 
@@ -205,7 +209,7 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!${retryInstructions}${con
         // Enhance the user message with context for the AI, but this won't be shown to the user
         const enhancedContent = `${lastMessage.content}
 
-Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections. Use only Mermaid v11.6.0 compatible syntax.`
+Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
 
         // Replace the last message with the enhanced version
         processedMessages[processedMessages.length - 1] = {
@@ -225,11 +229,8 @@ Based on the current diagram, please modify it according to the request while ma
         model,
         messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
-        temperature: retryAttempt > 0 ? 0.05 : 0.1, // Very low temperature for consistency
-        max_tokens: isSummaryRequest ? 300 : 800, // Reduced to encourage simpler responses
-        top_p: 0.9, // Reduce randomness
-        frequency_penalty: 0.1, // Slight penalty for repetition
-        presence_penalty: 0.1, // Encourage focused responses
+        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
+        max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
 
