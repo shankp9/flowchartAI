@@ -119,15 +119,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       },
     })
 
-    // Auto-hide controls on mobile after interaction
-    const timer = setTimeout(() => {
-      if (screenSize === "mobile" && !isFullscreen && !isStandalone) {
-        setShowControls(false)
-      }
-    }, 3000)
-
     return () => {
-      clearTimeout(timer)
       window.removeEventListener("resize", handleResize)
     }
   }, [isFullscreen, isStandalone, screenSize])
@@ -162,7 +154,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
       setZoom(newZoom)
       setPan({ x: newPanX, y: newPanY })
-      setShowControls(true)
       setAutoFit(false)
     }
 
@@ -203,7 +194,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         // Add visual feedback for element selection
         selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
       }
-      setShowControls(true)
     }
 
     const handleMouseUp = () => {
@@ -421,14 +411,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const handleZoomIn = useCallback(() => {
     const increment = screenSize === "mobile" ? 0.15 : 0.2
     setZoom((prev) => Math.min(5, prev + increment))
-    setShowControls(true)
     setAutoFit(false)
   }, [screenSize])
 
   const handleZoomOut = useCallback(() => {
     const increment = screenSize === "mobile" ? 0.15 : 0.2
     setZoom((prev) => Math.max(0.1, prev - increment))
-    setShowControls(true)
     setAutoFit(false)
   }, [screenSize])
 
@@ -448,7 +436,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       setZoom(newZoom)
       setPan({ x: 0, y: 0 })
       setAutoFit(true)
-      setShowControls(true)
     }
   }, [screenSize])
 
@@ -456,7 +443,6 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     setZoom(1)
     setPan({ x: 0, y: 0 })
     setAutoFit(true)
-    setShowControls(true)
   }, [])
 
   const handleFullscreen = useCallback(() => {
@@ -793,9 +779,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       <div
         className={`absolute ${
           screenSize === "mobile" ? "top-2 right-2" : "top-4 right-4"
-        } z-20 transition-all duration-300 ${
-          showControls || controlsExpanded ? "opacity-100" : "opacity-0 hover:opacity-100"
-        }`}
+        } z-20 transition-all duration-300 opacity-100`}
       >
         <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl border border-gray-200/50 overflow-hidden">
           {/* Compact Controls */}
@@ -1236,9 +1220,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         }}
         onMouseEnter={() => setShowControls(true)}
         onMouseLeave={() => {
-          if (!isFullscreen && !isStandalone && !controlsExpanded && screenSize !== "mobile") {
-            setTimeout(() => setShowControls(false), 3000)
-          }
+          // Controls always visible - no auto-hide
         }}
       >
         <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
