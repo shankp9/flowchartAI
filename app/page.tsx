@@ -753,7 +753,9 @@ export default function Home() {
               <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-2 py-1">
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  onClick={() => {/* Add zoom out handler */}}
+                  onClick={() => {
+                    /* Add zoom out handler */
+                  }}
                   title="Zoom Out"
                 >
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -765,11 +767,13 @@ export default function Home() {
                 </div>
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  onClick={() => {/* Add zoom in handler */}}
+                  onClick={() => {
+                    /* Add zoom in handler */
+                  }}
                   title="Zoom In"
                 >
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                 </button>
               </div>
@@ -778,23 +782,34 @@ export default function Home() {
               <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-2 py-1">
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {/* Add fit to screen handler */}}
+                  onClick={() => {
+                    /* Add fit to screen handler */
+                  }}
                   title="Fit to Screen"
                 >
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                    />
                   </svg>
                 </button>
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {/* Add reset view handler */}}
+                  onClick={() => {
+                    /* Add reset view handler */
+                  }}
                   title="Reset View"
                 >
                   <RefreshCw className="h-3 w-3" />
                 </button>
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {/* Add grid toggle handler */}}
+                  onClick={() => {
+                    /* Add grid toggle handler */
+                  }}
                   title="Toggle Grid"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -807,11 +822,18 @@ export default function Home() {
               <div className="relative">
                 <button
                   className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                  onClick={() => {/* Add theme selector toggle */}}
+                  onClick={() => {
+                    /* Add theme selector toggle */
+                  }}
                   title="Change Theme"
                 >
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 004 4h4a2 2 0 002-2V5z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"
+                    />
                   </svg>
                   <span>Theme</span>
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -824,11 +846,18 @@ export default function Home() {
               <div className="relative">
                 <button
                   className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                  onClick={() => {/* Add download menu toggle */}}
+                  onClick={() => {
+                    /* Add download menu toggle */
+                  }}
                   title="Download Options"
                 >
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
                   <span>Download</span>
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -840,7 +869,9 @@ export default function Home() {
               {/* Copy Button */}
               <button
                 className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                onClick={() => {/* Add copy handler */}}
+                onClick={() => {
+                  /* Add copy handler */
+                }}
                 title="Copy SVG to Clipboard"
               >
                 <Copy className="h-3 w-3" />
@@ -850,7 +881,9 @@ export default function Home() {
               {/* Code Toggle */}
               <button
                 className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                onClick={() => {/* Add code toggle handler */}}
+                onClick={() => {
+                  /* Add code toggle handler */
+                }}
                 title="Show Code"
               >
                 <Code className="h-3 w-3" />
@@ -885,32 +918,32 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Canvas Content - Fixed height, no scrolling */}
-            <div className="flex-1 relative overflow-hidden h-full pt-20">
-              {outputCode ? (
-                <Mermaid
-                  chart={outputCode}
-                  isFullscreen={isFullscreen}
-                  onFullscreenChange={setIsFullscreen}
-                  isStandalone={!chatVisible}
-                />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center space-y-4 max-w-md">
-                    <div className="w-20 h-20 mx-auto bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                      <Sparkles className="h-10 w-10 text-gray-500" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-lg">Your diagram will appear here</h3>
-                      <p className="text-sm text-gray-600">Describe the diagram you want to create in natural language</p>
-                    </div>
+          {/* Canvas Content - Fixed height, no scrolling */}
+          <div className="flex-1 relative overflow-hidden h-full pt-20">
+            {outputCode ? (
+              <Mermaid
+                chart={outputCode}
+                isFullscreen={isFullscreen}
+                onFullscreenChange={setIsFullscreen}
+                isStandalone={!chatVisible}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center space-y-4 max-w-md">
+                  <div className="w-20 h-20 mx-auto bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
+                    <Sparkles className="h-10 w-10 text-gray-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-lg">Your diagram will appear here</h3>
+                    <p className="text-sm text-gray-600">Describe the diagram you want to create in natural language</p>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       )}
 
       {/* Show canvas button when hidden but has content */}
@@ -926,5 +959,5 @@ export default function Home() {
         </div>
       )}
     </main>
-  )\
+  )
 }
