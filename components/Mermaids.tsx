@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
 import {
@@ -23,6 +22,7 @@ import {
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
+import { containerRef } from "@/lib/containerRef" // Declare containerRef here
 
 interface MermaidProps {
   chart: string
@@ -34,7 +34,6 @@ interface MermaidProps {
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
 export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
   const [theme, setTheme] = useState<Theme>("default")
@@ -455,14 +454,10 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setWasConverted(false)
 
         // Clear previous content safely
-        while (container.firstChild) {
-          try {
-            container.removeChild(container.firstChild)
-          } catch (e) {
-            console.warn("Error removing child:", e)
-            container.innerHTML = ""
-            break
-          }
+        try {
+          container.innerHTML = ""
+        } catch (e) {
+          console.warn("Error clearing container:", e)
         }
 
         container.removeAttribute("data-processed")
@@ -558,14 +553,16 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           }
 
           try {
-            if (container && !container.contains(wrapper)) {
+            if (container && container.parentNode) {
               container.appendChild(wrapper)
             }
           } catch (e) {
             console.error("Error appending wrapper:", e)
             try {
               container.innerHTML = ""
-              container.appendChild(wrapper)
+              if (container && container.parentNode) {
+                container.appendChild(wrapper)
+              }
             } catch (innerError) {
               console.error("Failed to append after clearing:", innerError)
             }
@@ -601,15 +598,21 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               container.appendChild(successDiv)
               setTimeout(() => {
                 try {
-                  if (successDiv.parentNode === container) {
+                  if (container.contains(successDiv)) {
                     container.removeChild(successDiv)
-                  } else if (successDiv.parentNode) {
-                    successDiv.parentNode.removeChild(successDiv)
                   }
                 } catch (e) {
                   console.warn("Error removing success message:", e)
-                  if (container.contains(successDiv)) {
-                    container.innerHTML = container.innerHTML
+                  // Fallback: re-render without the message
+                  try {
+                    const messages = container.querySelectorAll('[class*="absolute"][class*="border"]')
+                    messages.forEach((msg) => {
+                      if (container.contains(msg)) {
+                        container.removeChild(msg)
+                      }
+                    })
+                  } catch (fallbackError) {
+                    console.warn("Fallback removal also failed:", fallbackError)
                   }
                 }
               }, 5000)
@@ -1205,3 +1208,18 @@ function createSimplifiedDiagram(originalCode: string): string {
     style C fill:#ccffcc`
   }
 }
+
+// Add this useEffect for cleanup
+const containerRefCleanup = useRef(containerRef.current)
+useEffect(() => {
+  return () => {
+    const container = containerRefCleanup.current
+    if (container) {
+      try {
+        container.innerHTML = ""
+      } catch (e) {
+        console.warn("Error during cleanup:", e)
+      }
+    }
+  }
+}, [])
