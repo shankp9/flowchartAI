@@ -1,11 +1,38 @@
+"use client"
+
 import { User, Bot } from "lucide-react"
+import { Button } from "./ui/button"
 
 interface ChatMessageProps {
   message: string
   role?: "user" | "assistant" | "system"
+  onSuggestionClick?: (suggestion: string) => void
 }
 
-export function ChatMessage({ message, role = "user" }: ChatMessageProps) {
+export function ChatMessage({ message, role = "user", onSuggestionClick }: ChatMessageProps) {
+  // Check if this is a suggestion message
+  const isSuggestionMessage = message.includes("💡 **Suggestions for improvement:**")
+
+  // Parse suggestions from the message
+  const suggestions: string[] = []
+  if (isSuggestionMessage && onSuggestionClick) {
+    const suggestionLines = message.split("\n").filter((line) => /^\d+\./.test(line.trim()))
+    suggestions.push(...suggestionLines.map((line) => line.replace(/^\d+\.\s*/, "").trim()))
+  }
+
+  const formatMessage = (text: string) => {
+    // Convert markdown-style formatting to HTML
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.*?)\*/g, "<em>$1</em>")
+      .split("\n")
+      .map((line, index) => (
+        <div key={index} className={line.trim() === "" ? "h-2" : ""}>
+          {line.trim() === "" ? "" : <span dangerouslySetInnerHTML={{ __html: line }} />}
+        </div>
+      ))
+  }
+
   return (
     <div className="flex gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors">
       <div className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center bg-gray-100">
@@ -13,7 +40,26 @@ export function ChatMessage({ message, role = "user" }: ChatMessageProps) {
       </div>
       <div className="flex-1 space-y-2">
         <div className="font-medium text-sm text-gray-600">{role === "user" ? "You" : "AI Assistant"}</div>
-        <div className="text-sm leading-relaxed whitespace-pre-wrap">{message}</div>
+        <div className="text-sm leading-relaxed">
+          {formatMessage(message)}
+
+          {/* Render clickable suggestion buttons */}
+          {suggestions.length > 0 && onSuggestionClick && (
+            <div className="mt-3 space-y-2">
+              {suggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-left justify-start h-auto p-3 text-xs hover:bg-blue-50 hover:border-blue-300"
+                  onClick={() => onSuggestionClick(suggestion)}
+                >
+                  💡 {suggestion}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

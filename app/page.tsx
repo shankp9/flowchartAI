@@ -6,7 +6,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Lightbulb,
   Sparkles,
   AlertCircle,
   RefreshCw,
@@ -16,7 +15,6 @@ import { Mermaid } from "@/components/Mermaids"
 import { ChatInput } from "@/components/ChatInput"
 import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
 import { parseCodeFromMessage, sanitizeMermaidCode } from "@/lib/utils"
@@ -59,8 +57,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [chatCollapsed, setChatCollapsed] = useState(false)
   const [diagramCollapsed, setDiagramCollapsed] = useState(false)
-  const [diagramSummary, setDiagramSummary] = useState<string>("")
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  // Removed diagramSummary and suggestions state - now handled as chat messages
   const [error, setError] = useState<string>("")
   const [retryCount, setRetryCount] = useState(0)
 
@@ -105,15 +102,26 @@ export default function Home() {
 
           try {
             const parsed = JSON.parse(result)
-            setDiagramSummary(parsed.summary || "")
-            setSuggestions(parsed.suggestions || [])
-          } catch {
-            setDiagramSummary("Diagram generated successfully")
-            setSuggestions([
+            const summary = parsed.summary || "Diagram generated successfully"
+            const suggestions = parsed.suggestions || [
               "Add more detail to the process steps",
               "Include error handling paths",
               "Add decision points for better flow control",
-            ])
+            ]
+
+            // Add summary as AI message
+            const summaryMessage: Message = {
+              role: "assistant",
+              content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
+            }
+
+            setMessages((prev) => [...prev, summaryMessage])
+          } catch {
+            const fallbackMessage: Message = {
+              role: "assistant",
+              content: "✅ Diagram generated successfully! The diagram looks good and follows proper syntax.",
+            }
+            setMessages((prev) => [...prev, fallbackMessage])
           }
         }
       }
@@ -486,7 +494,12 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
               ) : (
                 <div className="space-y-4 p-4">
                   {messages.map((message, index) => (
-                    <ChatMessage key={`${message.content}-${index}`} message={message.content} role={message.role} />
+                    <ChatMessage
+                      key={`${message.content}-${index}`}
+                      message={message.content}
+                      role={message.role}
+                      onSuggestionClick={handleSuggestionClick}
+                    />
                   ))}
                   {isLoading && (
                     <div className="flex items-center gap-2 text-gray-600 p-4">
@@ -573,50 +586,6 @@ Please follow this exact syntax pattern but create a diagram for my request.`,
                 </div>
               )}
             </div>
-
-            {/* Summary and Suggestions */}
-            {(diagramSummary || suggestions.length > 0) && (
-              <div className="border-t border-gray-200 p-4 space-y-4 max-h-64 overflow-y-auto">
-                {diagramSummary && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Sparkles className="h-4 w-4" />
-                        Summary
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <p className="text-sm text-gray-600">{diagramSummary}</p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {suggestions.length > 0 && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Lightbulb className="h-4 w-4" />
-                        Suggestions
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0 space-y-2">
-                      {suggestions.map((suggestion, index) => (
-                        <Button
-                          key={index}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-left justify-start h-auto p-3 text-xs"
-                          onClick={() => handleSuggestionClick(suggestion)}
-                          disabled={isLoading}
-                        >
-                          {suggestion}
-                        </Button>
-                      ))}
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
           </>
         )}
       </div>
