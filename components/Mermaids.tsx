@@ -1,6 +1,4 @@
 "use client"
-
-import type React from "react"
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
 import {
@@ -14,11 +12,13 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
-  Download,
   Maximize,
   MousePointer2,
   Hand,
   Move,
+  Palette,
+  FileImage,
+  ChevronDown,
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
@@ -31,6 +31,35 @@ interface MermaidProps {
 }
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
+
+// Enhanced theme configurations with canvas backgrounds
+const ThemeConfigs = {
+  default: {
+    name: "Default",
+    canvasBackground: "bg-white",
+    description: "Clean white background",
+  },
+  neutral: {
+    name: "Neutral",
+    canvasBackground: "bg-gray-50",
+    description: "Soft gray background",
+  },
+  dark: {
+    name: "Dark",
+    canvasBackground: "bg-gray-900",
+    description: "Dark theme for low light",
+  },
+  forest: {
+    name: "Forest",
+    canvasBackground: "bg-green-50",
+    description: "Nature-inspired green tones",
+  },
+  base: {
+    name: "Base",
+    canvasBackground: "bg-slate-100",
+    description: "Minimal slate background",
+  },
+}
 
 export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,6 +87,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [isElementDragging, setIsElementDragging] = useState(false)
   const [selectedElement, setSelectedElement] = useState<Element | null>(null)
   const [interactionMode, setInteractionMode] = useState<"pan" | "select">("pan")
+
+  // New states for enhanced functionality
+  const [showThemeSelector, setShowThemeSelector] = useState(false)
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // Responsive breakpoints
   const [screenSize, setScreenSize] = useState<"mobile" | "tablet" | "desktop">("desktop")
@@ -353,55 +387,101 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
   }, [copyToClipboard, sanitizedCode])
 
-  const handleDownload = useCallback((format: "svg" | "png" = "svg") => {
-    const container = containerRef.current
-    if (!container) return
+  // Enhanced download functionality with multiple formats
+  const handleDownload = useCallback(
+    async (format: "svg" | "png" | "jpeg" = "svg") => {
+      const container = containerRef.current
+      if (!container) return
 
-    const svgElement = container.querySelector("svg")
-    if (svgElement) {
-      if (format === "svg") {
-        const svgData = svgElement.outerHTML
-        const blob = new Blob([svgData], { type: "image/svg+xml" })
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement("a")
-        link.href = url
-        link.download = "diagram.svg"
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
-      } else {
-        const canvas = document.createElement("canvas")
-        const ctx = canvas.getContext("2d")
-        const img = new Image()
+      setIsDownloading(true)
+      setShowDownloadMenu(false)
 
-        img.crossOrigin = "anonymous"
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx?.drawImage(img, 0, 0)
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob)
-              const link = document.createElement("a")
-              link.href = url
-              link.download = "diagram.png"
-              document.body.appendChild(link)
-              link.click()
-              document.body.removeChild(link)
-              URL.revokeObjectURL(url)
-            }
-          }, "image/png")
+      try {
+        const svgElement = container.querySelector("svg")
+        if (!svgElement) {
+          throw new Error("No SVG element found")
         }
 
-        const svgData = svgElement.outerHTML
-        const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
-        const svgUrl = URL.createObjectURL(svgBlob)
-        img.src = svgUrl
+        if (format === "svg") {
+          const svgData = svgElement.outerHTML
+          const blob = new Blob([svgData], { type: "image/svg+xml" })
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement("a")
+          link.href = url
+          link.download = `diagram.${format}`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          URL.revokeObjectURL(url)
+        } else {
+          // For PNG and JPEG, we need to convert SVG to canvas
+          const canvas = document.createElement("canvas")
+          const ctx = canvas.getContext("2d")
+          if (!ctx) throw new Error("Could not get canvas context")
+
+          const img = new Image()
+
+          await new Promise((resolve, reject) => {
+            img.onload = () => {
+              // Set canvas size with high DPI support
+              const scale = window.devicePixelRatio || 1
+              canvas.width = img.width * scale
+              canvas.height = img.height * scale
+              canvas.style.width = img.width + "px"
+              canvas.style.height = img.height + "px"
+
+              ctx.scale(scale, scale)
+
+              // Set background based on theme for non-transparent formats
+              if (format === "jpeg") {
+                const bgColor = theme === "dark" ? "#1f2937" : "#ffffff"
+                ctx.fillStyle = bgColor
+                ctx.fillRect(0, 0, img.width, img.height)
+              }
+
+              ctx.drawImage(img, 0, 0)
+              resolve(null)
+            }
+
+            img.onerror = reject
+            img.crossOrigin = "anonymous"
+
+            // Create blob URL for SVG
+            const svgData = svgElement.outerHTML
+            const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
+            const svgUrl = URL.createObjectURL(svgBlob)
+            img.src = svgUrl
+          })
+
+          // Convert canvas to blob and download
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const url = URL.createObjectURL(blob)
+                const link = document.createElement("a")
+                link.href = url
+                link.download = `diagram.${format}`
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+                URL.revokeObjectURL(url)
+              }
+            },
+            `image/${format}`,
+            format === "jpeg" ? 0.95 : 1.0,
+          )
+        }
+      } catch (error) {
+        console.error("Download failed:", error)
+        // Show error feedback
+        setLabel("Download failed")
+        setTimeout(() => setLabel("Copy SVG"), 3000)
+      } finally {
+        setIsDownloading(false)
       }
-    }
-  }, [])
+    },
+    [theme],
+  )
 
   // Enhanced zoom controls with better increments
   const handleZoomIn = useCallback(() => {
@@ -483,7 +563,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         }
 
         try {
-          // Initialize mermaid with responsive settings
+          // Initialize mermaid with the selected theme
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: "loose",
@@ -736,13 +816,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   }, [chart, theme, isClient, renderChart])
 
   const handleThemeChange = useCallback(
-    async (event: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = event.target.value as Theme
-      setTheme(value)
+    async (newTheme: Theme) => {
+      setTheme(newTheme)
+      setShowThemeSelector(false)
       if (isClient) {
-        localStorage.setItem("mermaid-theme", value)
+        localStorage.setItem("mermaid-theme", newTheme)
         if (chart) {
-          await renderChart(chart, value)
+          await renderChart(chart, newTheme)
         }
       }
     },
@@ -757,6 +837,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       </div>
     )
   }
+
+  const currentThemeConfig = ThemeConfigs[theme]
 
   return (
     <div className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}>
@@ -879,41 +961,120 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
               {/* Theme Selector */}
               <div className="p-3 border-b border-gray-100">
-                <select
-                  value={theme}
-                  onChange={handleThemeChange}
-                  className="w-full p-1 text-xs border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={isRendering}
-                  title="Change Theme"
-                >
-                  {Available_Themes.map((themeOption) => (
-                    <option key={themeOption} value={themeOption}>
-                      {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <button
+                    className="w-full flex items-center justify-between p-2 text-xs border border-gray-200 rounded bg-white hover:bg-gray-50 transition-colors"
+                    onClick={() => setShowThemeSelector(!showThemeSelector)}
+                    title="Change Theme"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Palette className="h-3 w-3" />
+                      <span>{currentThemeConfig.name}</span>
+                    </div>
+                    <ChevronDown className={`h-3 w-3 transition-transform ${showThemeSelector ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {showThemeSelector && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                      {Available_Themes.map((themeOption) => {
+                        const themeConfig = ThemeConfigs[themeOption]
+                        return (
+                          <button
+                            key={themeOption}
+                            className={`w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors ${
+                              theme === themeOption ? "bg-blue-50 text-blue-700" : ""
+                            }`}
+                            onClick={() => handleThemeChange(themeOption)}
+                          >
+                            <div
+                              className={`w-4 h-4 rounded border-2 ${themeConfig.canvasBackground} ${
+                                themeOption === "dark" ? "border-gray-600" : "border-gray-300"
+                              }`}
+                            />
+                            <div className="flex-1 text-left">
+                              <div className="font-medium">{themeConfig.name}</div>
+                              <div className="text-gray-500">{themeConfig.description}</div>
+                            </div>
+                            {theme === themeOption && <CheckCircle className="h-3 w-3 text-blue-600" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Export Options */}
               <div className="p-3">
-                <div className="grid grid-cols-2 gap-1">
+                <div className="relative">
                   <button
-                    className="flex items-center justify-center gap-1 p-2 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-                    onClick={handleCopyClick}
-                    disabled={isRendering}
-                    title="Copy SVG"
+                    className="w-full flex items-center justify-between p-2 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                    onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                    disabled={isRendering || isDownloading}
+                    title="Download Options"
                   >
-                    <Copy className="h-3 w-3" />
+                    <div className="flex items-center gap-2">
+                      <FileImage className="h-3 w-3" />
+                      <span>{isDownloading ? "Downloading..." : "Download"}</span>
+                    </div>
+                    <ChevronDown className={`h-3 w-3 transition-transform ${showDownloadMenu ? "rotate-180" : ""}`} />
                   </button>
-                  <button
-                    className="flex items-center justify-center gap-1 p-2 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-                    onClick={() => handleDownload("svg")}
-                    disabled={isRendering}
-                    title="Download SVG"
-                  >
-                    <Download className="h-3 w-3" />
-                  </button>
+
+                  {showDownloadMenu && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      <button
+                        className="w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors"
+                        onClick={() => handleDownload("svg")}
+                        disabled={isDownloading}
+                      >
+                        <div className="w-4 h-4 bg-blue-100 rounded flex items-center justify-center">
+                          <span className="text-blue-600 text-xs font-bold">S</span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-medium">SVG Vector</div>
+                          <div className="text-gray-500">Scalable, small file</div>
+                        </div>
+                      </button>
+                      <button
+                        className="w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors"
+                        onClick={() => handleDownload("png")}
+                        disabled={isDownloading}
+                      >
+                        <div className="w-4 h-4 bg-green-100 rounded flex items-center justify-center">
+                          <span className="text-green-600 text-xs font-bold">P</span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-medium">PNG Image</div>
+                          <div className="text-gray-500">Transparent background</div>
+                        </div>
+                      </button>
+                      <button
+                        className="w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors rounded-b-lg"
+                        onClick={() => handleDownload("jpeg")}
+                        disabled={isDownloading}
+                      >
+                        <div className="w-4 h-4 bg-orange-100 rounded flex items-center justify-center">
+                          <span className="text-orange-600 text-xs font-bold">J</span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-medium">JPEG Image</div>
+                          <div className="text-gray-500">Solid background</div>
+                        </div>
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* Quick Copy Button */}
+                <button
+                  className="w-full mt-2 flex items-center justify-center gap-2 p-2 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                  onClick={handleCopyClick}
+                  disabled={isRendering}
+                  title="Copy SVG to Clipboard"
+                >
+                  <Copy className="h-3 w-3" />
+                  <span>{label}</span>
+                </button>
               </div>
 
               {/* Status Indicators */}
@@ -1082,11 +1243,15 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         </div>
       )}
 
-      {/* Main Canvas Container */}
+      {/* Main Canvas Container with Theme-based Background */}
       <div
         ref={svgContainerRef}
         className={`w-full h-full relative overflow-hidden transition-colors duration-300 ${
-          showGrid ? "bg-gray-50" : "bg-white"
+          showGrid
+            ? theme === "dark"
+              ? "bg-gray-800"
+              : currentThemeConfig.canvasBackground
+            : currentThemeConfig.canvasBackground
         }`}
         style={{
           cursor:
