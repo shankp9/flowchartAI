@@ -32,14 +32,14 @@ export const ChatInput: React.FC<Props> = ({ messageCotent, onChange, onSubmit, 
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={isLoading}
-        className="min-h-[60px] pr-16 resize-none border focus:border-primary transition-colors"
+        className="min-h-[60px] pr-12 resize-none border focus:border-primary transition-colors"
         maxLength={2000}
       />
       <Button
         onClick={onSubmit}
         disabled={isLoading || !messageCotent.trim()}
         size="sm"
-        className="absolute bottom-[20px] right-3 h-12 w-12 p-0 flex items-center justify-center"
+        className="absolute bottom-2 right-2 h-9 w-9 p-0 flex items-center justify-center rounded-md"
       >
         {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
       </Button>
