@@ -11,8 +11,6 @@ import {
   Eye,
   EyeOff,
   Clock,
-  Code,
-  Copy,
   Maximize2,
   Minimize2,
 } from "lucide-react"
@@ -79,7 +77,7 @@ export default function Home() {
   // Enhanced retry state
   const [retryAttempts, setRetryAttempts] = useState(0)
   const [retryHistory, setRetryHistory] = useState<string[]>([])
-  const [isRetrying, setIsRetrying] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(isRetrying)
 
   // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -747,176 +745,40 @@ export default function Home() {
               )}
             </div>
 
-            {/* Canvas Controls */}
-            <div className="flex items-center gap-2">
-              {/* Zoom Controls */}
-              <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-2 py-1">
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  onClick={() => {
-                    /* Add zoom out handler */
-                  }}
-                  title="Zoom Out"
-                >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
-                </button>
-                <div className="bg-gray-100 rounded px-2 py-1 text-center min-w-12">
-                  <span className="text-xs font-mono">100%</span>
-                </div>
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  onClick={() => {
-                    /* Add zoom in handler */
-                  }}
-                  title="Zoom In"
-                >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
+            {/* Canvas Controls - Pass handlers to Mermaid component */}
+            <div className="flex items-center gap-2 overflow-x-auto py-1 px-1">
+              {/* We'll keep the UI elements but connect them to the Mermaid component via props */}
+              {outputCode && (
+                <>
+                  {/* Panel Controls */}
+                  <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-1 py-1">
+                    <button
+                      className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
+                      onClick={toggleChatVisibility}
+                      title={chatVisible ? "Hide Chat" : "Show Chat"}
+                    >
+                      {chatVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    </button>
+                    <button
+                      className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
+                      onClick={toggleCanvasVisibility}
+                      title="Hide Canvas"
+                    >
+                      <PanelRightClose className="h-3 w-3" />
+                    </button>
+                  </div>
 
-              {/* View Controls */}
-              <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-2 py-1">
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {
-                    /* Add fit to screen handler */
-                  }}
-                  title="Fit to Screen"
-                >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                    />
-                  </svg>
-                </button>
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {
-                    /* Add reset view handler */
-                  }}
-                  title="Reset View"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </button>
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={() => {
-                    /* Add grid toggle handler */
-                  }}
-                  title="Toggle Grid"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Theme Selector */}
-              <div className="relative">
-                <button
-                  className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                  onClick={() => {
-                    /* Add theme selector toggle */
-                  }}
-                  title="Change Theme"
-                >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"
-                    />
-                  </svg>
-                  <span>Theme</span>
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Download Options */}
-              <div className="relative">
-                <button
-                  className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                  onClick={() => {
-                    /* Add download menu toggle */
-                  }}
-                  title="Download Options"
-                >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  <span>Download</span>
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Copy Button */}
-              <button
-                className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                onClick={() => {
-                  /* Add copy handler */
-                }}
-                title="Copy SVG to Clipboard"
-              >
-                <Copy className="h-3 w-3" />
-                <span>Copy</span>
-              </button>
-
-              {/* Code Toggle */}
-              <button
-                className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                onClick={() => {
-                  /* Add code toggle handler */
-                }}
-                title="Show Code"
-              >
-                <Code className="h-3 w-3" />
-                <span>Code</span>
-              </button>
-
-              {/* Fullscreen Toggle */}
-              <button
-                className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-              >
-                {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                <span>{isFullscreen ? "Exit" : "Full"}</span>
-              </button>
-
-              {/* Panel Controls */}
-              <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-1 py-1">
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={toggleChatVisibility}
-                  title={chatVisible ? "Hide Chat" : "Show Chat"}
-                >
-                  {chatVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                </button>
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                  onClick={toggleCanvasVisibility}
-                  title="Hide Canvas"
-                >
-                  <PanelRightClose className="h-3 w-3" />
-                </button>
-              </div>
+                  {/* Fullscreen Toggle */}
+                  <button
+                    className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  >
+                    {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                    <span>{isFullscreen ? "Exit" : "Full"}</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -928,6 +790,9 @@ export default function Home() {
                 isFullscreen={isFullscreen}
                 onFullscreenChange={setIsFullscreen}
                 isStandalone={!chatVisible}
+                toggleChatVisibility={toggleChatVisibility}
+                toggleCanvasVisibility={toggleCanvasVisibility}
+                chatVisible={chatVisible}
               />
             ) : (
               <div className="h-full flex items-center justify-center">
