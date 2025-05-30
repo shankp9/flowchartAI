@@ -515,7 +515,7 @@ export default function Home() {
         className={`${chatWidth} transition-all duration-500 ease-in-out border-r border-gray-200 flex flex-col bg-white shadow-lg overflow-hidden`}
       >
         {/* Chat Header - Fixed */}
-        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+        <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between flex-shrink-0 fixed top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-blue-600" />
@@ -563,7 +563,7 @@ export default function Home() {
         {/* Messages - Scrollable Container */}
         <div
           ref={chatScrollContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden chat-scroll"
+          className="flex-1 overflow-y-auto overflow-x-hidden chat-scroll pt-20"
           style={{
             scrollBehavior: "smooth",
             overscrollBehavior: "contain",
@@ -691,7 +691,7 @@ export default function Home() {
           className={`${canvasWidth} transition-all duration-500 ease-in-out flex flex-col bg-gray-50 shadow-lg overflow-hidden`}
         >
           {/* Canvas Header - Fixed */}
-          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+          <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 fixed top-0 left-1/2 right-0 z-20 bg-white/95 backdrop-blur-sm">
             <div className="flex items-center gap-3">
               <h2 className="font-bold text-lg text-gray-800">Interactive Canvas</h2>
               {outputCode && (
@@ -732,7 +732,7 @@ export default function Home() {
           </div>
 
           {/* Canvas Content - Fixed height, no scrolling */}
-          <div className="flex-1 relative overflow-hidden h-full">
+          <div className="flex-1 relative overflow-hidden h-full pt-20">
             {outputCode ? (
               <Mermaid
                 chart={outputCode}
