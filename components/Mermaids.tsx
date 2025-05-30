@@ -972,13 +972,6 @@ export function Mermaid({
             >
               <RotateCcw className="h-3 w-3" />
             </button>
-            <button
-              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-              onClick={handleFullscreen}
-              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-            >
-              {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-            </button>
           </div>
 
           {/* Interaction Mode */}
@@ -1135,6 +1128,16 @@ export function Mermaid({
               <Code className="h-3 w-3" />
             )}
             <span>Code</span>
+          </button>
+
+          {/* Fullscreen Toggle - Positioned on the right */}
+          <button
+            className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
+            onClick={handleFullscreen}
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+            <span>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
           </button>
 
           {/* Chat visibility toggle */}
