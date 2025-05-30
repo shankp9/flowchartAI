@@ -127,6 +127,121 @@ function validateERDiagram(lines: string[], errors: string[]) {
   }
 }
 
+// Add this new function after the existing validation functions
+
+export function generateContextAwareSuggestions(diagramCode: string, diagramType: string): string[] {
+  const suggestions: string[] = []
+
+  // Analyze current diagram structure
+  const lines = diagramCode.split("\n").filter((line) => line.trim().length > 0)
+  const hasStartEnd = diagramCode.includes("Start") || diagramCode.includes("End")
+  const hasDecisions = diagramCode.includes("{") || diagramCode.includes("?")
+  const hasParallel = diagramCode.includes("&")
+  const nodeCount = lines.filter((line) => line.includes("-->")).length
+
+  if (diagramType === "flowchart" || diagramCode.includes("graph")) {
+    if (!hasStartEnd) {
+      suggestions.push("Add clear start and end nodes to define the process boundaries")
+    }
+    if (!hasDecisions && nodeCount > 2) {
+      suggestions.push("Include decision points with yes/no branches for better flow control")
+    }
+    if (nodeCount < 5) {
+      suggestions.push("Add more detailed process steps between the main actions")
+    }
+    if (!hasParallel && nodeCount > 3) {
+      suggestions.push("Consider adding parallel processing paths for concurrent operations")
+    }
+    suggestions.push("Add error handling and exception paths to make the flow more robust")
+    suggestions.push("Include validation or approval steps in the critical process points")
+  } else if (diagramType === "sequence" || diagramCode.includes("sequenceDiagram")) {
+    const participants = (diagramCode.match(/participant\s+\w+/g) || []).length
+    const interactions = (diagramCode.match(/->>|-->>|-x/g) || []).length
+
+    if (participants < 3) {
+      suggestions.push("Add more participants to show complete system interactions")
+    }
+    if (interactions < 4) {
+      suggestions.push("Include additional message exchanges to show the full workflow")
+    }
+    suggestions.push("Add error response messages and timeout handling")
+    suggestions.push("Include authentication or authorization steps in the sequence")
+    suggestions.push("Add database or external service interactions")
+    suggestions.push("Show return values and confirmation messages")
+  } else if (diagramType === "class" || diagramCode.includes("classDiagram")) {
+    const classes = (diagramCode.match(/class\s+\w+/g) || []).length
+    const relationships = (diagramCode.match(/--|>|<\|--|-->/g) || []).length
+
+    if (classes < 3) {
+      suggestions.push("Add more classes to represent the complete system architecture")
+    }
+    if (relationships < 2) {
+      suggestions.push("Include inheritance and composition relationships between classes")
+    }
+    suggestions.push("Add interface classes to define contracts")
+    suggestions.push("Include abstract base classes for common functionality")
+    suggestions.push("Add utility or helper classes to support main entities")
+    suggestions.push("Show aggregation relationships between related classes")
+  } else if (diagramType === "er" || diagramCode.includes("erDiagram")) {
+    const entities = (diagramCode.match(/\w+\s*\{/g) || []).length
+    const relationships = (diagramCode.match(/\|\|--|\}o--|\|\{/g) || []).length
+
+    if (entities < 3) {
+      suggestions.push("Add more entities to represent the complete data model")
+    }
+    if (relationships < 2) {
+      suggestions.push("Include foreign key relationships between related entities")
+    }
+    suggestions.push("Add lookup tables for enumerated values")
+    suggestions.push("Include audit fields like created_date and updated_date")
+    suggestions.push("Add junction tables for many-to-many relationships")
+    suggestions.push("Include user and role entities for access control")
+  } else if (diagramType === "journey" || diagramCode.includes("journey")) {
+    suggestions.push("Add more detailed steps in the user journey")
+    suggestions.push("Include pain points and satisfaction scores")
+    suggestions.push("Add alternative paths for different user types")
+    suggestions.push("Include touchpoints with different departments")
+    suggestions.push("Add decision points where users might drop off")
+    suggestions.push("Include recovery paths for failed interactions")
+  } else if (diagramType === "gantt" || diagramCode.includes("gantt")) {
+    suggestions.push("Add task dependencies to show project flow")
+    suggestions.push("Include milestone markers for key deliverables")
+    suggestions.push("Add resource allocation and team assignments")
+    suggestions.push("Include buffer time for risk management")
+    suggestions.push("Add parallel tasks to optimize timeline")
+    suggestions.push("Include testing and review phases")
+  }
+
+  // Generic suggestions for any diagram type
+  else {
+    suggestions.push("Add more detailed labels and descriptions")
+    suggestions.push("Include additional nodes to show complete workflow")
+    suggestions.push("Add branching paths for different scenarios")
+    suggestions.push("Include error handling and edge cases")
+    suggestions.push("Add more connections to show relationships")
+    suggestions.push("Include validation or checkpoint steps")
+  }
+
+  // Return only the first 3 most relevant suggestions
+  return suggestions.slice(0, 3)
+}
+
+// Add this function to detect diagram type from user input or code
+export function detectDiagramTypeFromCode(code: string): string {
+  const lowerCode = code.toLowerCase()
+
+  if (lowerCode.includes("sequencediagram")) return "sequence"
+  if (lowerCode.includes("classdiagram")) return "class"
+  if (lowerCode.includes("erdiagram")) return "er"
+  if (lowerCode.includes("journey")) return "journey"
+  if (lowerCode.includes("gantt")) return "gantt"
+  if (lowerCode.includes("statediagram")) return "state"
+  if (lowerCode.includes("pie")) return "pie"
+  if (lowerCode.includes("graph") || lowerCode.includes("flowchart")) return "flowchart"
+
+  return "flowchart" // default
+}
+
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
     return ""

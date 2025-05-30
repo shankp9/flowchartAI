@@ -33,19 +33,39 @@ export async function POST(req: NextRequest) {
     if (isSummaryRequest) {
       systemMessage = {
         role: "system",
-        content: `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
-    1) A brief summary of what the diagram shows (max 50 words)
-    2) Three specific, actionable suggestions for improving or expanding the diagram
-    
-    Respond ONLY with valid JSON in this exact format:
-    {
-      "summary": "Brief description of the diagram",
-      "suggestions": [
-        "First specific suggestion",
-        "Second specific suggestion", 
-        "Third specific suggestion"
-      ]
-    }`,
+        content: `You are an expert Mermaid diagram analyst. Analyze the given diagram and provide:
+1) A brief summary of what the diagram shows (max 50 words)
+2) Three specific, actionable suggestions that will generate VALID Mermaid syntax
+
+CRITICAL SUGGESTION RULES:
+- Suggestions MUST result in valid, renderable Mermaid diagrams
+- Focus on structural improvements (add nodes, connections, decision points)
+- Avoid suggestions that require complex syntax or experimental features
+- Ensure suggestions work with the current diagram type
+- Use simple, clear language that translates to basic Mermaid elements
+
+VALID SUGGESTION EXAMPLES:
+- "Add error handling paths to the process flow"
+- "Include a decision point for user authentication"
+- "Add parallel processing branches"
+- "Include start and end nodes"
+- "Add validation steps between processes"
+
+AVOID SUGGESTIONS THAT:
+- Require complex styling or theming
+- Use experimental Mermaid features
+- Need external integrations
+- Require non-standard syntax
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "summary": "Brief description of the diagram",
+  "suggestions": [
+    "First specific, renderable suggestion",
+    "Second specific, renderable suggestion", 
+    "Third specific, renderable suggestion"
+  ]
+}`,
       }
     } else {
       // Enhanced system message with retry-specific instructions

@@ -19,7 +19,13 @@ import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
-import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
+import {
+  parseCodeFromMessage,
+  sanitizeMermaidCode,
+  validateMermaidCode,
+  generateContextAwareSuggestions,
+  detectDiagramTypeFromCode,
+} from "@/lib/utils"
 
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
@@ -123,6 +129,7 @@ export default function Home() {
 
   const generateSummaryAndSuggestions = useCallback(async (code: string) => {
     try {
+      // First try to get AI-generated suggestions
       const summaryResponse = await fetch("/api/openai", {
         method: "POST",
         headers: {
@@ -144,6 +151,9 @@ export default function Home() {
         }),
       })
 
+      let summary = "Diagram generated successfully"
+      let suggestions: string[] = []
+
       if (summaryResponse.ok) {
         const reader = summaryResponse.body?.getReader()
         const decoder = new TextDecoder()
@@ -158,31 +168,58 @@ export default function Home() {
 
           try {
             const parsed = JSON.parse(result)
-            const summary = parsed.summary || "Diagram generated successfully"
-            const suggestions = parsed.suggestions || [
-              "Add more detail to the process steps",
-              "Include error handling paths",
-              "Add decision points for better flow control",
-            ]
-
-            // Add summary as AI message
-            const summaryMessage: Message = {
-              role: "assistant",
-              content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
-            }
-
-            setMessages((prev) => [...prev, summaryMessage])
+            summary = parsed.summary || summary
+            suggestions = parsed.suggestions || []
           } catch {
-            const fallbackMessage: Message = {
-              role: "assistant",
-              content: "✅ Diagram generated successfully! The diagram looks good and follows proper syntax.",
-            }
-            setMessages((prev) => [...prev, fallbackMessage])
+            // If AI parsing fails, use context-aware suggestions
+            console.log("AI suggestions failed, using context-aware fallback")
           }
         }
       }
+
+      // If AI suggestions failed or are empty, use context-aware suggestions
+      if (suggestions.length === 0) {
+        const diagramType = detectDiagramTypeFromCode(code)
+        suggestions = generateContextAwareSuggestions(code, diagramType)
+      }
+
+      // Validate suggestions to ensure they're actionable
+      const validatedSuggestions = suggestions
+        .filter(
+          (suggestion) =>
+            suggestion.length > 10 &&
+            suggestion.length < 100 &&
+            !suggestion.toLowerCase().includes("error") &&
+            !suggestion.toLowerCase().includes("invalid"),
+        )
+        .slice(0, 3)
+
+      // Add fallback suggestions if we don't have enough
+      if (validatedSuggestions.length < 3) {
+        const diagramType = detectDiagramTypeFromCode(code)
+        const fallbackSuggestions = generateContextAwareSuggestions(code, diagramType)
+        validatedSuggestions.push(...fallbackSuggestions.slice(0, 3 - validatedSuggestions.length))
+      }
+
+      // Add summary as AI message
+      const summaryMessage: Message = {
+        role: "assistant",
+        content: `📊 **Diagram Analysis:**\n\n${summary}\n\n💡 **Suggestions for improvement:**\n${validatedSuggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
+      }
+
+      setMessages((prev) => [...prev, summaryMessage])
     } catch (error) {
       console.error("Error generating summary:", error)
+
+      // Fallback to context-aware suggestions
+      const diagramType = detectDiagramTypeFromCode(code)
+      const fallbackSuggestions = generateContextAwareSuggestions(code, diagramType)
+
+      const fallbackMessage: Message = {
+        role: "assistant",
+        content: `✅ **Diagram generated successfully!**\n\n💡 **Suggestions for improvement:**\n${fallbackSuggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}\n\n*Click on any suggestion above to apply it to your diagram.*`,
+      }
+      setMessages((prev) => [...prev, fallbackMessage])
     }
   }, [])
 
