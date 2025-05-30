@@ -144,10 +144,60 @@ export default function Home() {
       }
 
       const finalCode = parseCodeFromMessage(code)
-      setOutputCode(finalCode)
 
-      if (finalCode) {
+      // Validate the code before setting it
+      if (finalCode && !finalCode.includes("Error: Invalid Response")) {
+        setOutputCode(finalCode)
         await generateSummaryAndSuggestions(finalCode)
+      } else {
+        // If we got an invalid response, try again with a more specific prompt
+        const retryMessage: Message = {
+          role: "user",
+          content: `Please create a simple flowchart diagram for: ${draftMessage}. Start with "graph TD" and include at least 3 connected nodes.`,
+        }
+
+        const retryMessages = [...newMessages, retryMessage]
+
+        try {
+          const retryResponse = await fetch("/api/openai", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messages: retryMessages,
+              model: "gpt-3.5-turbo",
+            }),
+          })
+
+          if (retryResponse.ok) {
+            const retryData = retryResponse.body
+            if (retryData) {
+              const retryReader = retryData.getReader()
+              const retryDecoder = new TextDecoder()
+              let retryDone = false
+              let retryCode = ""
+
+              while (!retryDone) {
+                const { value, done: retryDoneReading } = await retryReader.read()
+                retryDone = retryDoneReading
+                const retryChunkValue = retryDecoder.decode(value)
+                retryCode += retryChunkValue
+              }
+
+              const retryFinalCode = parseCodeFromMessage(retryCode)
+              if (retryFinalCode && !retryFinalCode.includes("Error: Invalid Response")) {
+                setOutputCode(retryFinalCode)
+                await generateSummaryAndSuggestions(retryFinalCode)
+              } else {
+                setError("Unable to generate a valid diagram. Please try a more specific request.")
+              }
+            }
+          }
+        } catch (retryError) {
+          console.error("Retry error:", retryError)
+          setError("Unable to generate diagram. Please try again with a more specific request.")
+        }
       }
     } catch (error) {
       console.error("Request error:", error)
@@ -267,6 +317,28 @@ export default function Home() {
                       Simply describe what you want, and watch it come to life.
                     </p>
                   </div>
+
+                  {/* Example prompts */}
+                  <div className="space-y-2 pt-4">
+                    <p className="text-xs text-gray-500 font-medium">Try these examples:</p>
+                    <div className="space-y-1">
+                      {[
+                        "Create a user login flowchart",
+                        "Design a sequence diagram for API authentication",
+                        "Make a class diagram for an e-commerce system",
+                        "Build a gantt chart for project timeline",
+                      ].map((example, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setDraftMessage(example)}
+                          className="block w-full text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded transition-colors"
+                        >
+                          "{example}"
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap justify-center gap-2 pt-4">
                     <Badge variant="secondary" className="text-xs">
                       Instant Generation

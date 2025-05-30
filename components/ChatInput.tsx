@@ -27,7 +27,7 @@ export const ChatInput: React.FC<Props> = ({ messageCotent, onChange, onSubmit, 
   return (
     <div className="relative">
       <Textarea
-        placeholder="Describe your diagram... (e.g., 'Create a user login flowchart')"
+        placeholder="Describe your diagram in detail... (e.g., 'Create a flowchart showing the user registration process with email verification')"
         value={messageCotent}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -44,7 +44,7 @@ export const ChatInput: React.FC<Props> = ({ messageCotent, onChange, onSubmit, 
         {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
       </Button>
       <div className="flex justify-between items-center mt-1 text-xs text-muted-foreground">
-        <span>Press Enter to send</span>
+        <span>Press Enter to send • Be specific for better results</span>
         <span>{messageCotent.length}/2000</span>
       </div>
     </div>

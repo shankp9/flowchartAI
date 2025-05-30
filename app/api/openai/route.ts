@@ -42,26 +42,29 @@ export async function POST(req: NextRequest) {
     } else {
       systemMessage = {
         role: "system",
-        content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+        content: `You are an expert Mermaid diagram generator. You MUST respond with ONLY valid Mermaid syntax code, nothing else.
 
-Available diagram types:
-- Flowchart: graph TD or graph LR
-- Sequence diagram: sequenceDiagram
-- Class diagram: classDiagram
-- User journey: journey
-- Gantt chart: gantt
-- C4 diagram: C4Context, C4Container, C4Component
-- State diagram: stateDiagram-v2
-- Entity Relationship: erDiagram
-- Pie chart: pie
+CRITICAL RULES:
+1. NEVER include explanatory text before or after the diagram code
+2. ALWAYS start your response directly with the diagram type keyword
+3. ALWAYS wrap the entire response in a code block with 'mermaid' language identifier
 
-Important rules:
-1. Always use proper Mermaid syntax
-2. For journey diagrams, use proper task format: "Task name: score: Actor"
-3. Ensure all syntax is valid and complete
-4. Wrap response in code blocks with mermaid language identifier
+Available diagram types and their syntax:
+- Flowchart: "graph TD" or "graph LR"
+- Sequence: "sequenceDiagram"
+- Class: "classDiagram"
+- State: "stateDiagram-v2"
+- Entity Relationship: "erDiagram"
+- User Journey: "journey"
+- Gantt: "gantt"
+- Pie Chart: "pie title Chart Title"
+- Git Graph: "gitGraph"
 
-Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+Example valid responses:
+For flowchart request: "graph TD\n    A[Start] --> B[Process]\n    B --> C[End]"
+For sequence request: "sequenceDiagram\n    participant A\n    participant B\n    A->>B: Message"
+
+RESPOND WITH MERMAID CODE ONLY - NO EXPLANATIONS OR ADDITIONAL TEXT!`,
       }
     }
 

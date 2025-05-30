@@ -16,9 +16,49 @@ export function serializeCode(code: string): string {
 }
 
 export function parseCodeFromMessage(message: string): string {
-  const codeBlockRegex = /```(?:mermaid)?\n([\s\S]*?)\n```/g
-  const match = codeBlockRegex.exec(message)
-  return match ? match[1].trim() : message.trim()
+  // Remove any leading/trailing whitespace
+  const trimmed = message.trim()
+
+  // Try to extract code from markdown code blocks first
+  const codeBlockRegex = /```(?:mermaid)?\s*\n?([\s\S]*?)\n?```/g
+  const codeMatch = codeBlockRegex.exec(trimmed)
+
+  if (codeMatch && codeMatch[1]) {
+    return codeMatch[1].trim()
+  }
+
+  // If no code block found, check if the entire message is valid Mermaid syntax
+  const validMermaidStarters = [
+    "graph",
+    "flowchart",
+    "sequenceDiagram",
+    "classDiagram",
+    "stateDiagram",
+    "erDiagram",
+    "journey",
+    "gantt",
+    "pie",
+    "gitGraph",
+    "C4Context",
+    "C4Container",
+    "C4Component",
+  ]
+
+  const firstLine = trimmed.split("\n")[0].toLowerCase()
+  const isValidMermaid = validMermaidStarters.some((starter) => firstLine.startsWith(starter.toLowerCase()))
+
+  if (isValidMermaid) {
+    return trimmed
+  }
+
+  // If we get here, the response doesn't contain valid Mermaid code
+  // Return a default error diagram
+  return `graph TD
+    A[Error: Invalid Response] --> B[Please try again with a more specific request]
+    B --> C[Example: Create a flowchart for user login process]
+    style A fill:#ffcccc
+    style B fill:#ffffcc
+    style C fill:#ccffcc`
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
