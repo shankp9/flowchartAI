@@ -50,7 +50,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [showControls, setShowControls] = useState(true)
+  const [showControls, setShowControls] = useState(isFullscreen)
   const [showGrid, setShowGrid] = useState(false)
   const [autoFit, setAutoFit] = useState(true)
 
@@ -114,6 +114,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       window.removeEventListener("resize", handleResize)
     }
   }, [isFullscreen, isStandalone, screenSize])
+
+  // Auto-adjust controls visibility based on fullscreen mode
+  useEffect(() => {
+    setShowControls(isFullscreen)
+  }, [isFullscreen])
 
   // Enhanced mouse and touch interactions with better zoom control
   useEffect(() => {
@@ -1089,9 +1094,17 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
           minHeight: "300px",
           touchAction: "none", // Prevent default touch behaviors
         }}
-        onMouseEnter={() => setShowControls(true)}
+        onMouseEnter={() => {
+          // Only auto-show controls on hover when in fullscreen mode
+          if (isFullscreen) {
+            setShowControls(true)
+          }
+        }}
         onMouseLeave={() => {
-          // Controls always visible - no auto-hide
+          // Only auto-hide controls when not in fullscreen mode and not manually opened
+          if (!isFullscreen) {
+            setShowControls(false)
+          }
         }}
       >
         <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
