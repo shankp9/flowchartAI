@@ -125,7 +125,14 @@ CRITICAL RULES:
 6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
 7. ALWAYS use proper Mermaid syntax for each diagram type
 8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
+9. Ensure all syntax follows official Mermaid documentation
+
+CLASS DIAGRAM SPECIFIC RULES:
+10. ALWAYS separate class definitions from relationships
+11. Use proper class block syntax: class ClassName { }
+12. NEVER combine class definitions with relationships on the same line
+13. Put each class member on a separate line within the class block
+14. Use proper relationship syntax: ClassA --> ClassB
 
 SEQUENCE DIAGRAM SYNTAX RULES:
 - CORRECT: "ParticipantA ->> ParticipantB: Message"
@@ -145,6 +152,7 @@ ER DIAGRAM SYNTAX RULES:
 CLASS DIAGRAM SYNTAX RULES:
 - CORRECT: "class User { +String name +login() }"
 - CORRECT: "User --> System"
+- INCORRECT: "class User { }User --> System" (combined syntax)
 - INCORRECT: "class User ERROR IDENTIFYING"
 
 VALID DIAGRAM TYPES:
@@ -157,7 +165,7 @@ VALID DIAGRAM TYPES:
 - erDiagram
 - pie
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
+RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!${retryInstructions}${contextInstructions}`,
       }
     }
 

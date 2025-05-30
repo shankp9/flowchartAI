@@ -110,8 +110,13 @@ function validateFlowchart(lines: string[], errors: string[]) {
 function validateClassDiagram(lines: string[], errors: string[]) {
   for (const line of lines) {
     // Check for proper class syntax
-    if (line.includes("class ") && !line.match(/class\s+\w+/)) {
+    if (line.includes("class ") && !line.match(/class\s+\w+(\s*\{[\s\S]*?\})?/)) {
       errors.push(`Invalid class declaration: "${line}"`)
+    }
+
+    // Check for malformed class blocks
+    if (line.includes("{}") && line.includes("-->")) {
+      errors.push(`Invalid class syntax - class definition and relationship on same line: "${line}"`)
     }
   }
 }
@@ -303,7 +308,7 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = fixERDiagramSyntax(cleanedCode)
   }
 
-  // Fix class diagram issues
+  // Fix class diagram issues - ENHANCED
   if (cleanedCode.includes("classDiagram")) {
     cleanedCode = fixClassDiagramSyntax(cleanedCode)
   }
@@ -331,8 +336,12 @@ function cleanInvalidSyntax(code: string): string {
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
   cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
 
+  // Fix class diagram specific issues
+  cleaned = cleaned.replace(/\}\s*class\s+/g, "}\n    class ")
+  cleaned = cleaned.replace(/\}\s*(\w+)\s*-->/g, "}\n    $1 -->")
+
   // Remove invalid characters and patterns
-  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?]/g, "")
+  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()\n]/g, "")
 
   // Fix broken lines
   cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
@@ -399,9 +408,11 @@ function fixERDiagramSyntax(code: string): string {
 function fixClassDiagramSyntax(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
+  let inClassBlock = false
+  let currentClass = ""
 
-  for (const line of lines) {
-    let fixedLine = line.trim()
+  for (let i = 0; i < lines.length; i++) {
+    let fixedLine = lines[i].trim()
 
     // Skip empty lines and diagram declaration
     if (!fixedLine || fixedLine === "classDiagram") {
@@ -409,28 +420,106 @@ function fixClassDiagramSyntax(code: string): string {
       continue
     }
 
-    // Fix class definitions
+    // Handle class definitions with potential syntax issues
     if (fixedLine.includes("class ")) {
-      // Ensure proper class syntax
-      fixedLine = fixedLine.replace(/class\s+(\w+)\s*\{/, "class $1 {")
-    }
+      // Extract class name and check for malformed syntax
+      const classMatch = fixedLine.match(/class\s+(\w+)/)
+      if (classMatch) {
+        const className = classMatch[1]
 
-    // Fix method and property syntax
-    if (fixedLine.includes("(") && fixedLine.includes(")")) {
-      // Method definition
-      fixedLine = fixedLine.replace(/\s+/g, " ")
-    }
+        // Check if there's a malformed class block (class Name {}OtherStuff)
+        const malformedMatch = fixedLine.match(/class\s+(\w+)\s*\{\s*\}(.+)/)
+        if (malformedMatch) {
+          const [, name, remainder] = malformedMatch
+          // Split into proper class definition and separate line
+          fixedLines.push(`class ${name} {`)
+          fixedLines.push("}")
 
-    // Fix inheritance syntax
-    if (fixedLine.includes("<|--") || fixedLine.includes("--|>")) {
-      const inheritanceMatch = fixedLine.match(/(\w+)\s*(<\|--|--\|>)\s*(\w+)/)
-      if (inheritanceMatch) {
-        const [, class1, arrow, class2] = inheritanceMatch
-        fixedLine = `${class1} ${arrow} ${class2}`
+          // Handle the remainder (could be relationships)
+          const remainderTrimmed = remainder.trim()
+          if (remainderTrimmed) {
+            // If it looks like a relationship, add it as a separate line
+            if (remainderTrimmed.includes("-->") || remainderTrimmed.includes("<|--")) {
+              fixedLines.push(`    ${remainderTrimmed}`)
+            } else {
+              // If it's another class, process it
+              fixedLines.push(`    class ${remainderTrimmed}`)
+            }
+          }
+          continue
+        }
+
+        // Normal class definition
+        if (fixedLine.includes("{")) {
+          inClassBlock = true
+          currentClass = className
+          fixedLines.push(`class ${className} {`)
+        } else {
+          fixedLines.push(`class ${className}`)
+        }
+        continue
       }
     }
 
+    // Handle class block closing
+    if (inClassBlock && fixedLine.includes("}")) {
+      inClassBlock = false
+      currentClass = ""
+      fixedLines.push("}")
+
+      // Check if there's content after the closing brace
+      const afterBrace = fixedLine.substring(fixedLine.indexOf("}") + 1).trim()
+      if (afterBrace) {
+        // Process content after the brace
+        if (afterBrace.includes("-->") || afterBrace.includes("<|--")) {
+          fixedLines.push(`    ${afterBrace}`)
+        } else if (afterBrace.startsWith("class ")) {
+          fixedLines.push(`    ${afterBrace}`)
+        } else {
+          // Might be another class name, add class keyword
+          fixedLines.push(`    class ${afterBrace}`)
+        }
+      }
+      continue
+    }
+
+    // Handle content inside class blocks
+    if (inClassBlock) {
+      // Clean up method and property syntax
+      if (fixedLine.includes("(") && fixedLine.includes(")")) {
+        // Method definition - ensure proper spacing
+        fixedLine = fixedLine.replace(/\s+/g, " ")
+      }
+      fixedLines.push(`    ${fixedLine}`)
+      continue
+    }
+
+    // Handle relationships
+    if (fixedLine.includes("-->") || fixedLine.includes("<|--") || fixedLine.includes("--|>")) {
+      // Clean up relationship syntax
+      const relationshipMatch = fixedLine.match(/(\w+)\s*(<\|--|--\|>|-->|<--)\s*(\w+)(.*)/)
+      if (relationshipMatch) {
+        const [, class1, arrow, class2, label] = relationshipMatch
+        const cleanLabel = label ? ` : ${label.trim().replace(/^:\s*/, "")}` : ""
+        fixedLine = `${class1} ${arrow} ${class2}${cleanLabel}`
+      }
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Handle standalone class names (convert to class declarations)
+    if (fixedLine.match(/^\w+$/) && !fixedLine.includes("-->")) {
+      fixedLines.push(`class ${fixedLine}`)
+      continue
+    }
+
+    // Default: add the line as-is
     fixedLines.push(fixedLine)
+  }
+
+  // Ensure any unclosed class blocks are closed
+  if (inClassBlock) {
+    fixedLines.push("}")
   }
 
   return fixedLines.join("\n")
