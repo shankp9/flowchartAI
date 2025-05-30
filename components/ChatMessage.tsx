@@ -7,9 +7,10 @@ interface ChatMessageProps {
   message: string
   role?: "user" | "assistant" | "system"
   onSuggestionClick?: (suggestion: string) => void
+  isLoading?: boolean
 }
 
-export function ChatMessage({ message, role = "user", onSuggestionClick }: ChatMessageProps) {
+export function ChatMessage({ message, role = "user", onSuggestionClick, isLoading = false }: ChatMessageProps) {
   // Check if this is a suggestion message
   const isSuggestionMessage = message.includes("💡 **Suggestions for improvement:**")
 
@@ -54,6 +55,7 @@ export function ChatMessage({ message, role = "user", onSuggestionClick }: ChatM
                   size="sm"
                   className="w-full text-left justify-start h-auto p-3 text-xs hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
                   onClick={() => onSuggestionClick(suggestion)}
+                  disabled={isLoading}
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-blue-600 font-medium">💡</span>

@@ -252,6 +252,9 @@ Please modify this diagram according to the request while maintaining proper Mer
 
       if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
         setOutputCode(sanitizedCode)
+        // Clear draft code after setting final code
+        setDraftOutputCode("")
+        // Generate summary and suggestions
         await generateSummaryAndSuggestions(sanitizedCode)
       } else {
         throw new Error("Invalid diagram syntax received")
@@ -278,7 +281,6 @@ Replace the content with elements relevant to my request, but keep the exact sam
         const retryMessages = [...newMessages, retryMessage]
 
         try {
-          setIsLoading(true)
           setError("Retrying with simplified syntax...")
 
           const retryResponse = await fetch("/api/openai", {
@@ -312,6 +314,7 @@ Replace the content with elements relevant to my request, but keep the exact sam
 
               if (retrySanitizedCode && !retrySanitizedCode.includes("Error: Invalid Response")) {
                 setOutputCode(retrySanitizedCode)
+                setDraftOutputCode("")
                 await generateSummaryAndSuggestions(retrySanitizedCode)
                 setError("")
               } else {
@@ -324,6 +327,8 @@ Replace the content with elements relevant to my request, but keep the exact sam
           setError("Unable to generate diagram. Please try again with a more specific request.")
         }
       }
+    } finally {
+      // Always set loading to false when done
       setIsLoading(false)
     }
   }, [draftMessage, messages, generateSummaryAndSuggestions, retryCount, outputCode])
@@ -434,6 +439,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
 
         if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
           setOutputCode(sanitizedCode)
+          setDraftOutputCode("")
           await generateSummaryAndSuggestions(sanitizedCode)
         } else {
           throw new Error("Invalid diagram syntax received")
@@ -442,6 +448,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
         console.error("Request error:", error)
         setError(error instanceof Error ? error.message : "An error occurred")
       } finally {
+        // Always set loading to false when done
         setIsLoading(false)
       }
     },
@@ -518,8 +525,10 @@ Please update this diagram to incorporate the suggestion while maintaining the e
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span>AI Chat</span>
+              <span
+                className={`w-2 h-2 rounded-full ${isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"}`}
+              ></span>
+              <span>{isLoading ? "Generating..." : "Ready"}</span>
             </div>
           </div>
 
@@ -579,6 +588,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                       key={index}
                       onClick={() => setDraftMessage(example)}
                       className="block w-full text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-4 py-3 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
+                      disabled={isLoading}
                     >
                       "{example}"
                     </button>
@@ -606,12 +616,18 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                   message={message.content}
                   role={message.role}
                   onSuggestionClick={handleSuggestionClick}
+                  isLoading={isLoading}
                 />
               ))}
               {isLoading && (
                 <div className="flex items-center gap-3 text-gray-600 p-4 bg-blue-50 rounded-lg">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                  <span className="text-sm font-medium">Generating diagram...</span>
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Generating diagram...</span>
+                    {draftOutputCode && (
+                      <div className="mt-2 text-xs text-gray-500">Received {draftOutputCode.length} characters...</div>
+                    )}
+                  </div>
                 </div>
               )}
               {error && (
@@ -626,6 +642,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                           size="sm"
                           onClick={handleRetry}
                           className="text-xs flex items-center gap-2 hover:bg-red-100"
+                          disabled={isLoading}
                         >
                           <RefreshCw className="h-3 w-3" />
                           Try Again with Different Format
