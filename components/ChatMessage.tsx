@@ -34,14 +34,25 @@ export function ChatMessage({ message, role = "user", onSuggestionClick, isLoadi
       ))
   }
 
+  const isUser = role === "user"
+  const isAssistant = role === "assistant"
+
   return (
-    <div className="flex gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors">
-      <div className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center bg-gray-100">
-        {role === "user" ? <User className="h-4 w-4 text-gray-600" /> : <Bot className="h-4 w-4 text-blue-600" />}
+    <div
+      className={`flex gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors ${isAssistant ? "flex-row-reverse" : ""}`}
+    >
+      <div
+        className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${isUser ? "bg-blue-100" : "bg-gray-100"}`}
+      >
+        {isUser ? <User className="h-4 w-4 text-blue-600" /> : <Bot className="h-4 w-4 text-gray-600" />}
       </div>
-      <div className="flex-1 space-y-2">
-        <div className="font-medium text-sm text-gray-600">{role === "user" ? "You" : "AI Assistant"}</div>
-        <div className="text-sm leading-relaxed">
+      <div className={`flex-1 space-y-2 ${isAssistant ? "text-right" : ""}`}>
+        <div className={`font-medium text-sm text-gray-600 ${isAssistant ? "text-right" : ""}`}>
+          {isUser ? "You" : "AI Assistant"}
+        </div>
+        <div
+          className={`text-sm leading-relaxed ${isAssistant ? "bg-blue-50 border border-blue-200 rounded-lg p-3 inline-block max-w-full" : ""}`}
+        >
           {formatMessage(message)}
 
           {/* Render clickable suggestion buttons */}
