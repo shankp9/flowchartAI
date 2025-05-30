@@ -1,10 +1,10 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useRef, useState } from "react"
 import mermaid from "mermaid"
 import { Copy, Palette } from "lucide-react"
-
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Theme } from "@/types/type"
 
 interface MermaidProps {
@@ -23,12 +23,11 @@ export function Mermaid({ chart }: MermaidProps) {
   // Ensure this only runs on client side
   useEffect(() => {
     setIsClient(true)
-    const savedTheme = localStorage.getItem("theme")
+    const savedTheme = localStorage.getItem("mermaid-theme")
     if (savedTheme && Available_Themes.includes(savedTheme as Theme)) {
       setTheme(savedTheme as Theme)
     } else {
-      localStorage.setItem("theme", "default")
-      localStorage.setItem("theme", "default")
+      localStorage.setItem("mermaid-theme", "default")
     }
   }, [])
 
@@ -104,10 +103,11 @@ export function Mermaid({ chart }: MermaidProps) {
     }
   }, [chart, theme, isClient])
 
-  const handleThemeChange = async (value: Theme) => {
+  const handleThemeChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value as Theme
     setTheme(value)
     if (isClient) {
-      localStorage.setItem("theme", value)
+      localStorage.setItem("mermaid-theme", value)
       if (chart) {
         await renderChart(chart, value)
       }
@@ -125,22 +125,27 @@ export function Mermaid({ chart }: MermaidProps) {
 
   return (
     <div className="w-full">
-      <div className="absolute right-0 px-4 py-2 text-xs font-sans flex items-center justify-center">
-        <Select value={theme} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-[180px] mr-2 h-8">
-            <Palette className="h-4 w-4" />
-            <SelectValue placeholder="Select theme" />
-          </SelectTrigger>
-          <SelectContent>
+      <div className="absolute right-0 px-4 py-2 text-xs font-sans flex items-center justify-center gap-2">
+        <div className="flex items-center gap-2">
+          <Palette className="h-4 w-4" />
+          <select
+            value={theme}
+            onChange={handleThemeChange}
+            className="h-8 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             {Available_Themes.map((themeOption) => (
-              <SelectItem key={themeOption} value={themeOption}>
+              <option key={themeOption} value={themeOption}>
                 {themeOption}
-              </SelectItem>
+              </option>
             ))}
-          </SelectContent>
-        </Select>
-        <button className="flex ml-auto gap-2 disabled:opacity-50" onClick={handleCopyClick} disabled={isRendering}>
-          <Copy className="mr-2 h-4 w-4" />
+          </select>
+        </div>
+        <button
+          className="flex items-center gap-2 px-2 py-1 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+          onClick={handleCopyClick}
+          disabled={isRendering}
+        >
+          <Copy className="h-4 w-4" />
           {label}
         </button>
       </div>

@@ -1,77 +1,79 @@
-import Link from "next/link";
-import { useState } from "react";
-import { Copy, HelpCircle, Edit } from "lucide-react";
+"use client"
 
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+import type React from "react"
 
-import { serializeCode } from "@/lib/utils";
+import { useState } from "react"
+import { Copy, HelpCircle, Edit } from "lucide-react"
+import { serializeCode } from "@/lib/utils"
 
 interface Props {
-  code: string;
+  code: string
 }
 
 export const CodeBlock: React.FC<Props> = ({ code }) => {
-  const [label, setLabel] = useState<string>("Copy code");
+  const [label, setLabel] = useState<string>("Copy code")
+  const [showHelp, setShowHelp] = useState(false)
+
   const copyToClipboard = (text: string) => {
-    const el = document.createElement("textarea");
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand("copy");
-    document.body.removeChild(el);
-  };
+    navigator.clipboard.writeText(text).catch(() => {
+      // Fallback for older browsers
+      const el = document.createElement("textarea")
+      el.value = text
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand("copy")
+      document.body.removeChild(el)
+    })
+  }
 
   const handleCopyClick = () => {
-    copyToClipboard(code);
-    setLabel("Copied!");
+    copyToClipboard(code)
+    setLabel("Copied!")
 
     setTimeout(() => {
-      setLabel("Copy code");
-    }, 1000);
-  };
+      setLabel("Copy code")
+    }, 1000)
+  }
 
   return (
     <pre>
       <div className="bg-black rounded-md mb-4">
         <div className="flex items-center relative text-gray-200 bg-gray-800 px-4 py-2 text-xs font-sans justify-between rounded-t-md">
-          <div className="flex">
+          <div className="flex items-center">
             <span>mermaid</span>
-            <HoverCard>
-              <HoverCardTrigger>
-                <HelpCircle className="mx-2 h-4 w-4 cursor-pointer" />
-              </HoverCardTrigger>
-              <HoverCardContent>
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-500">
-                    Learn more about{" "}
-                    <Link
-                      href="https://mermaid.js.org/intro/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline"
-                    >
-                      Mermaid syntax
-                    </Link>
-                    .
-                  </p>
+            <div className="relative ml-2">
+              <button
+                onMouseEnter={() => setShowHelp(true)}
+                onMouseLeave={() => setShowHelp(false)}
+                className="cursor-pointer"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+              {showHelp && (
+                <div className="absolute bottom-full left-0 mb-2 p-2 bg-white text-black text-xs rounded shadow-lg z-10 whitespace-nowrap">
+                  Learn more about{" "}
+                  <a
+                    href="https://mermaid.js.org/intro/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline text-blue-600"
+                  >
+                    Mermaid syntax
+                  </a>
                 </div>
-              </HoverCardContent>
-            </HoverCard>
+              )}
+            </div>
           </div>
-          <div className="flex">
-            <Link
+          <div className="flex items-center gap-4">
+            <a
               href={`https://mermaid.live/edit#pako:${serializeCode(code)}`}
               target="_blank"
               rel="noreferrer"
-              className="flex ml-auto gap-1 mr-4"
+              className="flex items-center gap-1 hover:text-white"
             >
               <Edit className="h-4 w-4" /> Edit
-            </Link>
-            <button className="flex ml-auto gap-1" onClick={handleCopyClick}>
+            </a>
+            <button className="flex items-center gap-1 hover:text-white" onClick={handleCopyClick}>
               <Copy className="h-4 w-4" />
               {label}
             </button>
@@ -82,5 +84,5 @@ export const CodeBlock: React.FC<Props> = ({ code }) => {
         </div>
       </div>
     </pre>
-  );
-};
+  )
+}
