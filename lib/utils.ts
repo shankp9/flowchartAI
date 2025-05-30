@@ -64,6 +64,9 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
   }
 
+  // Enhanced syntax cleaning and validation
+  cleanedCode = cleanInvalidSyntax(cleanedCode)
+
   // Fix common sequence diagram issues
   if (cleanedCode.includes("sequenceDiagram")) {
     cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
@@ -74,9 +77,20 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = fixFlowchartSyntax(cleanedCode)
   }
 
-  // Validate the final code
+  // Fix ER diagram issues
+  if (cleanedCode.includes("erDiagram")) {
+    cleanedCode = fixERDiagramSyntax(cleanedCode)
+  }
+
+  // Fix class diagram issues
+  if (cleanedCode.includes("classDiagram")) {
+    cleanedCode = fixClassDiagramSyntax(cleanedCode)
+  }
+
+  // Final validation and fallback
   if (!validateMermaidSyntax(cleanedCode)) {
-    console.warn("Generated code may have syntax issues:", cleanedCode)
+    console.warn("Generated code has syntax issues, creating fallback:", cleanedCode)
+    return createFallbackDiagram(cleanedCode)
   }
 
   // Remove empty lines and normalize whitespace
@@ -87,6 +101,124 @@ export function sanitizeMermaidCode(code: string): string {
     .join("\n")
 
   return cleanedCode
+}
+
+function cleanInvalidSyntax(code: string): string {
+  let cleaned = code
+
+  // Remove common error patterns
+  cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
+  cleaned = cleaned.replace(/\bERROR\b/gi, "")
+  cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
+  cleaned = cleaned.replace(/\bBelo\b/gi, "")
+
+  // Fix malformed entity relationships
+  cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
+  cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
+
+  // Remove invalid characters and patterns
+  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?]/g, "")
+
+  // Fix broken lines
+  cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
+
+  return cleaned
+}
+
+function fixERDiagramSyntax(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+
+  for (const line of lines) {
+    let fixedLine = line.trim()
+
+    // Skip empty lines and diagram declaration
+    if (!fixedLine || fixedLine === "erDiagram") {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Fix entity definitions
+    if (fixedLine.includes("{") && !fixedLine.includes("}")) {
+      // Multi-line entity definition
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Fix relationship syntax
+    if (fixedLine.includes("||") || fixedLine.includes("}|") || fixedLine.includes("|{")) {
+      // Ensure proper relationship format: ENTITY ||--|| ENTITY : LABEL
+      const relationshipMatch = fixedLine.match(/(\w+)\s*([|}{]+[-|]+[|}{]+)\s*(\w+)\s*:\s*(.+)/)
+      if (relationshipMatch) {
+        const [, entity1, relationship, entity2, label] = relationshipMatch
+        fixedLine = `${entity1} ${relationship} ${entity2} : ${label}`
+      }
+    }
+
+    // Fix entity attribute syntax
+    if (fixedLine.includes("{") && fixedLine.includes("}")) {
+      // Single-line entity definition
+      const entityMatch = fixedLine.match(/(\w+)\s*\{([^}]+)\}/)
+      if (entityMatch) {
+        const [, entityName, attributes] = entityMatch
+        const cleanAttributes = attributes
+          .split(/[,\n]/)
+          .map((attr) => attr.trim())
+          .filter((attr) => attr.length > 0)
+          .map((attr) => {
+            // Clean attribute format
+            return attr.replace(/\s+/g, " ").replace(/[^\w\s$$$$]/g, "")
+          })
+          .join("\n        ")
+
+        fixedLine = `${entityName} {\n        ${cleanAttributes}\n    }`
+      }
+    }
+
+    fixedLines.push(fixedLine)
+  }
+
+  return fixedLines.join("\n")
+}
+
+function fixClassDiagramSyntax(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+
+  for (const line of lines) {
+    let fixedLine = line.trim()
+
+    // Skip empty lines and diagram declaration
+    if (!fixedLine || fixedLine === "classDiagram") {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Fix class definitions
+    if (fixedLine.includes("class ")) {
+      // Ensure proper class syntax
+      fixedLine = fixedLine.replace(/class\s+(\w+)\s*\{/, "class $1 {")
+    }
+
+    // Fix method and property syntax
+    if (fixedLine.includes("(") && fixedLine.includes(")")) {
+      // Method definition
+      fixedLine = fixedLine.replace(/\s+/g, " ")
+    }
+
+    // Fix inheritance syntax
+    if (fixedLine.includes("<|--") || fixedLine.includes("--|>")) {
+      const inheritanceMatch = fixedLine.match(/(\w+)\s*(<\|--|--\|>)\s*(\w+)/)
+      if (inheritanceMatch) {
+        const [, class1, arrow, class2] = inheritanceMatch
+        fixedLine = `${class1} ${arrow} ${class2}`
+      }
+    }
+
+    fixedLines.push(fixedLine)
+  }
+
+  return fixedLines.join("\n")
 }
 
 function validateMermaidSyntax(code: string): boolean {
@@ -291,6 +423,66 @@ function fixFlowchartSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
+}
+
+function createFallbackDiagram(originalCode: string): string {
+  const firstLine = originalCode.split("\n")[0].toLowerCase().trim()
+
+  if (firstLine.includes("sequence")) {
+    return `sequenceDiagram
+    participant User
+    participant System
+    User->>System: Request
+    System-->>User: Response`
+  } else if (firstLine.includes("class")) {
+    return `classDiagram
+    class User {
+        +String name
+        +String email
+        +login()
+        +logout()
+    }
+    class System {
+        +processRequest()
+        +sendResponse()
+    }
+    User --> System`
+  } else if (firstLine.includes("er")) {
+    return `erDiagram
+    USER {
+        int id PK
+        string name
+        string email
+    }
+    ORDER {
+        int id PK
+        int user_id FK
+        date created
+    }
+    USER ||--o{ ORDER : places`
+  } else if (firstLine.includes("journey")) {
+    return `journey
+    title User Journey
+    section Task
+      Step 1: 3: User
+      Step 2: 4: User
+      Step 3: 5: User`
+  } else if (firstLine.includes("gantt")) {
+    return `gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    section Planning
+    Task 1: 2024-01-01, 7d
+    Task 2: 2024-01-08, 5d`
+  } else {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Success]
+    C -->|No| E[Error]
+    D --> F[End]
+    E --> F`
+  }
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {

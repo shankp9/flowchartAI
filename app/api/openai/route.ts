@@ -64,6 +64,8 @@ CRITICAL RULES:
 4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
 5. NEVER start a line with just an arrow (-->> or ->>)
 6. When modifying existing diagrams, maintain the same structure and add improvements
+7. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
+8. ALWAYS use proper Mermaid syntax for each diagram type
 
 ${
   lastDiagramCode
@@ -87,6 +89,16 @@ FLOWCHART SYNTAX RULES:
 - CORRECT: "A[Start] --> B[Process] --> C[End]"
 - INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
 
+ER DIAGRAM SYNTAX RULES:
+- CORRECT: "CUSTOMER ||--o{ ORDER : places"
+- CORRECT: "USER { int id PK }"
+- INCORRECT: "USER ERROR -- ERROR_TYPE : Below"
+
+CLASS DIAGRAM SYNTAX RULES:
+- CORRECT: "class User { +String name +login() }"
+- CORRECT: "User --> System"
+- INCORRECT: "class User ERROR IDENTIFYING"
+
 VALID DIAGRAM TYPES:
 - graph TD / graph LR (flowchart)
 - sequenceDiagram
@@ -97,7 +109,7 @@ VALID DIAGRAM TYPES:
 - erDiagram
 - pie
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!`,
+RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
       }
     }
 
