@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import {
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
   Sparkles,
   AlertCircle,
   RefreshCw,
@@ -803,94 +802,9 @@ export default function Home() {
 
             {/* Canvas Controls - Pass handlers to Mermaid component */}
             <div className="flex items-center gap-2 overflow-x-auto py-1 px-1">
-              {/* We'll keep the UI elements but connect them to the Mermaid component via props */}
+              {/* We'll keep only the fullscreen button */}
               {outputCode && (
                 <>
-                  {/* Panel Controls */}
-                  <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-1 py-1">
-                    <button
-                      className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                      onClick={() => setIsFullscreen(!isFullscreen)}
-                      title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                    >
-                      {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                    </button>
-                    <button
-                      className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                      onClick={toggleCanvasVisibility}
-                      title="Hide Canvas"
-                    >
-                      <PanelRightClose className="h-3 w-3" />
-                    </button>
-                  </div>
-
-                  {/* Theme Selector */}
-                  <div className="relative" data-theme-selector>
-                    <button
-                      className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
-                      onClick={() => setShowThemeSelector(!showThemeSelector)}
-                      title="Change Theme"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"
-                        />
-                      </svg>
-                      <span>{currentTheme.charAt(0).toUpperCase() + currentTheme.slice(1)}</span>
-                      <svg
-                        className={`h-3 w-3 transition-transform ${showThemeSelector ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-
-                    {showThemeSelector && (
-                      <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48">
-                        {["default", "neutral", "dark", "forest", "base"].map((theme) => (
-                          <button
-                            key={theme}
-                            className={`w-full flex items-center gap-3 p-3 text-xs hover:bg-gray-50 transition-colors ${
-                              currentTheme === theme ? "bg-blue-50 text-blue-700" : ""
-                            }`}
-                            onClick={() => handleThemeChange(theme as any)}
-                          >
-                            <div
-                              className={`w-4 h-4 rounded border-2 ${
-                                theme === "dark"
-                                  ? "bg-gray-900 border-gray-600"
-                                  : theme === "forest"
-                                    ? "bg-green-50 border-green-300"
-                                    : theme === "neutral"
-                                      ? "bg-gray-50 border-gray-300"
-                                      : theme === "base"
-                                        ? "bg-slate-100 border-slate-300"
-                                        : "bg-white border-gray-300"
-                              }`}
-                            />
-                            <div className="flex-1 text-left">
-                              <div className="font-medium">{theme.charAt(0).toUpperCase() + theme.slice(1)}</div>
-                            </div>
-                            {currentTheme === theme && (
-                              <svg className="h-3 w-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Fullscreen Toggle */}
                   <button
                     className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
