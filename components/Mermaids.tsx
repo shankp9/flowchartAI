@@ -916,7 +916,7 @@ export function Mermaid({
       style={{ isolation: "isolate" }}
     >
       {/* Enhanced Canvas Header with All Controls - Fixed */}
-      <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 fixed top-0 left-1/2 right-0 z-20 bg-white/95 backdrop-blur-sm">
+      <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center justify-between flex-shrink-0 fixed top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <h2 className="font-bold text-lg text-gray-800">Interactive Canvas</h2>
           {outputCode && (
