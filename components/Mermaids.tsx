@@ -22,7 +22,6 @@ import {
 } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
-import { containerRef } from "@/lib/containerRef" // Declare containerRef here
 
 interface MermaidProps {
   chart: string
@@ -34,6 +33,7 @@ interface MermaidProps {
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
 export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
   const [theme, setTheme] = useState<Theme>("default")
@@ -1208,18 +1208,3 @@ function createSimplifiedDiagram(originalCode: string): string {
     style C fill:#ccffcc`
   }
 }
-
-// Add this useEffect for cleanup
-const containerRefCleanup = useRef(containerRef.current)
-useEffect(() => {
-  return () => {
-    const container = containerRefCleanup.current
-    if (container) {
-      try {
-        container.innerHTML = ""
-      } catch (e) {
-        console.warn("Error during cleanup:", e)
-      }
-    }
-  }
-}, [])
