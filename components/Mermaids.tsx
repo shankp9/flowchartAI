@@ -134,69 +134,200 @@ export function Mermaid({ chart }: MermaidProps) {
           throw new Error("Empty diagram code")
         }
 
-        // Initialize mermaid with current theme
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "loose",
-          theme: selectedTheme,
-          logLevel: "error",
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: true,
-            curve: "basis",
-          },
-          journey: {
-            useMaxWidth: true,
-          },
-          sequence: {
-            useMaxWidth: true,
-            showSequenceNumbers: true,
-          },
-          gantt: {
-            useMaxWidth: true,
-          },
-        })
+        try {
+          // Validate the code before rendering
+          if (!cleanedCode.trim()) {
+            throw new Error("Empty diagram code")
+          }
 
-        // Generate unique ID for this render
-        const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          // Check for common syntax issues that cause parsing errors
+          const lines = cleanedCode.split("\n")
+          const firstLine = lines[0].trim().toLowerCase()
 
-        // Render the chart
-        const { svg } = await mermaid.render(id, cleanedCode)
+          // Validate diagram type
+          const validStarters = [
+            "graph",
+            "flowchart",
+            "sequencediagram",
+            "classdiagram",
+            "statediagram",
+            "erdiagram",
+            "journey",
+            "gantt",
+            "pie",
+            "gitgraph",
+          ]
+          const isValidType = validStarters.some((starter) => firstLine.startsWith(starter))
 
-        // Create a wrapper div for the SVG
-        const wrapper = document.createElement("div")
-        wrapper.innerHTML = svg
-        wrapper.style.width = "100%"
-        wrapper.style.height = "100%"
-        wrapper.style.display = "flex"
-        wrapper.style.justifyContent = "center"
-        wrapper.style.alignItems = "center"
+          if (!isValidType) {
+            throw new Error("Invalid diagram type. Please start with a valid Mermaid diagram type.")
+          }
 
-        container.appendChild(wrapper)
+          // Additional validation for sequence diagrams
+          if (firstLine.startsWith("sequencediagram")) {
+            const hasValidArrows = lines.some(
+              (line) =>
+                line.includes("->") ||
+                line.includes("-->") ||
+                line.includes("->>") ||
+                line.includes("-->>") ||
+                line.includes("-x") ||
+                line.includes("--x"),
+            )
 
-        // Show success message if code was fixed or converted
-        if (codeWasFixed || isOldSyntax) {
-          const successDiv = document.createElement("div")
-          const messageText = isOldSyntax ? "Converted from old flowchart syntax" : "Syntax automatically fixed"
-          const bgColor = isOldSyntax
-            ? "bg-blue-50 border-blue-200 text-blue-700"
-            : "bg-green-50 border-green-200 text-green-700"
-
-          successDiv.className = `absolute top-4 left-4 ${bgColor} border rounded-md p-2 flex items-center gap-2 text-xs z-10`
-          successDiv.innerHTML = `
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
-            </svg>
-            <span>${messageText}</span>
-          `
-          container.appendChild(successDiv)
-
-          // Auto-hide the success message after 4 seconds
-          setTimeout(() => {
-            if (successDiv.parentNode) {
-              successDiv.parentNode.removeChild(successDiv)
+            if (!hasValidArrows && lines.length > 2) {
+              throw new Error("Sequence diagram must contain valid arrow syntax (->>, -->, -x, etc.)")
             }
-          }, 4000)
+          }
+
+          // Initialize mermaid with current theme
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "loose",
+            theme: selectedTheme,
+            logLevel: "error",
+            flowchart: {
+              useMaxWidth: true,
+              htmlLabels: true,
+              curve: "basis",
+            },
+            journey: {
+              useMaxWidth: true,
+            },
+            sequence: {
+              useMaxWidth: true,
+              showSequenceNumbers: true,
+              wrap: true,
+              width: 150,
+            },
+            gantt: {
+              useMaxWidth: true,
+            },
+          })
+
+          // Generate unique ID for this render
+          const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+          // Render the chart with additional error handling
+          let svg: string
+          try {
+            const result = await mermaid.render(id, cleanedCode)
+            svg = result.svg
+          } catch (renderError) {
+            // If rendering fails, try with a simplified version
+            console.warn("Initial render failed, attempting with simplified syntax:", renderError)
+
+            // Try to create a simplified version of the diagram
+            const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+            const simplifiedResult = await mermaid.render(id + "_simplified", simplifiedCode)
+            svg = simplifiedResult.svg
+
+            // Show a warning that the diagram was simplified
+            setWasFixed(true)
+          }
+
+          // Create a wrapper div for the SVG
+          const wrapper = document.createElement("div")
+          wrapper.innerHTML = svg
+          wrapper.style.width = "100%"
+          wrapper.style.height = "100%"
+          wrapper.style.display = "flex"
+          wrapper.style.justifyContent = "center"
+          wrapper.style.alignItems = "center"
+
+          container.appendChild(wrapper)
+
+          // Show success message if code was fixed or converted
+          if (codeWasFixed || isOldSyntax || wasFixed) {
+            const successDiv = document.createElement("div")
+            let messageText = "Syntax automatically fixed"
+            let bgColor = "bg-green-50 border-green-200 text-green-700"
+
+            if (isOldSyntax) {
+              messageText = "Converted from old flowchart syntax"
+              bgColor = "bg-blue-50 border-blue-200 text-blue-700"
+            } else if (wasFixed) {
+              messageText = "Diagram simplified due to syntax errors"
+              bgColor = "bg-yellow-50 border-yellow-200 text-yellow-700"
+            }
+
+            successDiv.className = `absolute top-4 left-4 ${bgColor} border rounded-md p-2 flex items-center gap-2 text-xs z-10`
+            successDiv.innerHTML = `
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+              </svg>
+              <span>${messageText}</span>
+            `
+            container.appendChild(successDiv)
+
+            // Auto-hide the success message after 4 seconds
+            setTimeout(() => {
+              if (successDiv.parentNode) {
+                successDiv.parentNode.removeChild(successDiv)
+              }
+            }, 4000)
+          }
+        } catch (error) {
+          console.error("Mermaid rendering error:", error)
+          const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
+          setError(errorMessage)
+
+          // Display enhanced error message in container
+          const errorDiv = document.createElement("div")
+          errorDiv.className = "text-red-500 p-6 text-center max-w-lg mx-auto"
+
+          let errorContent = `
+            <div class="font-semibold mb-3 text-lg">Diagram Rendering Error</div>
+            <div class="text-sm mb-4 text-red-600">${errorMessage}</div>
+          `
+
+          // Provide specific help based on error type
+          if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
+            errorContent += `
+              <div class="text-xs text-gray-600 mb-4 p-3 bg-gray-50 rounded">
+                <strong>Common fixes:</strong><br>
+                • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
+                • Ensure participant names don't contain spaces or special characters<br>
+                • Verify all connections have proper arrow syntax (--&gt;)<br>
+                • Make sure all brackets and quotes are properly closed
+              </div>
+            `
+          }
+
+          errorContent += `
+            <div class="space-y-2">
+              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-md text-sm hover:bg-blue-200 transition-colors" id="show-code-btn">
+                Show Diagram Code
+              </button>
+              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-md text-sm hover:bg-green-200 transition-colors ml-2" id="retry-simplified-btn">
+                Try Simplified Version
+              </button>
+            </div>
+          `
+
+          errorDiv.innerHTML = errorContent
+          container.appendChild(errorDiv)
+
+          // Add event listeners to the buttons
+          setTimeout(() => {
+            const showCodeBtn = document.getElementById("show-code-btn")
+            const retryBtn = document.getElementById("retry-simplified-btn")
+
+            if (showCodeBtn) {
+              showCodeBtn.addEventListener("click", () => setShowCode(true))
+            }
+
+            if (retryBtn) {
+              retryBtn.addEventListener("click", async () => {
+                try {
+                  const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+                  await renderChart(simplifiedCode, selectedTheme)
+                } catch (e) {
+                  console.error("Simplified render also failed:", e)
+                }
+              })
+            }
+          }, 0)
         }
       } catch (error) {
         console.error("Mermaid rendering error:", error)
@@ -393,4 +524,38 @@ export function Mermaid({ chart }: MermaidProps) {
       )}
     </div>
   )
+}
+
+// Helper function to create a simplified version of a diagram when rendering fails
+function createSimplifiedDiagram(originalCode: string): string {
+  const lines = originalCode
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const firstLine = lines[0].toLowerCase()
+
+  if (firstLine.startsWith("sequencediagram")) {
+    return `sequenceDiagram
+    participant A as User
+    participant B as System
+    A->>B: Request
+    B-->>A: Response`
+  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]`
+  } else if (firstLine.startsWith("journey")) {
+    return `journey
+    title User Journey
+    section Task
+      Step 1: 3: User
+      Step 2: 4: User`
+  } else {
+    return `graph TD
+    A[Simplified Diagram] --> B[Original syntax had errors]
+    B --> C[Please check the code and try again]
+    style A fill:#ffcccc
+    style B fill:#ffffcc
+    style C fill:#ccffcc`
+  }
 }

@@ -119,31 +119,36 @@ export function sanitizeMermaidCode(code: string): string {
     const processedLines = []
     const participants = new Set<string>()
 
-    // First pass: collect all participants
+    // First pass: collect all participants and clean participant names
     for (const line of lines) {
       const trimmedLine = line.trim()
       if (!trimmedLine || trimmedLine.startsWith("sequenceDiagram")) continue
 
-      // Extract participants from arrows
+      // Extract participants from arrows with better regex
       const arrowPatterns = [
-        /^(\w+)\s*->>?\+?\s*(\w+):/, // A->>B: or A->B:
-        /^(\w+)\s*-->>?\+?\s*(\w+):/, // A-->>B: or A-->>B:
-        /^(\w+)\s*-x\s*(\w+):/, // A-xB:
-        /^(\w+)\s*--x\s*(\w+):/, // A--xB:
+        /^([A-Za-z0-9_-]+)\s*(->>?\+?|-->>?\+?|-x|--x)\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/, // Complete arrow syntax
+        /^([A-Za-z0-9_-]+)\s+(--?)\s+([A-Za-z0-9_-]+)\s*:\s*(.+)$/, // Incomplete arrows like "A -- B: message"
+        /^([A-Za-z0-9_-]+)\s+([A-Za-z0-9_-]+)\s*:\s*(.+)$/, // Missing arrows entirely "A B: message"
       ]
 
       for (const pattern of arrowPatterns) {
         const match = trimmedLine.match(pattern)
         if (match) {
-          participants.add(match[1])
-          participants.add(match[2])
+          // Clean participant names (remove special characters, spaces)
+          const participant1 = match[1].replace(/[^A-Za-z0-9_-]/g, "")
+          const participant2 = match[3]
+            ? match[3].replace(/[^A-Za-z0-9_-]/g, "")
+            : match[2].replace(/[^A-Za-z0-9_-]/g, "")
+
+          if (participant1) participants.add(participant1)
+          if (participant2) participants.add(participant2)
         }
       }
 
       // Extract from participant declarations
-      const participantMatch = trimmedLine.match(/^participant\s+(\w+)/)
+      const participantMatch = trimmedLine.match(/^participant\s+([A-Za-z0-9_-]+)/)
       if (participantMatch) {
-        participants.add(participantMatch[1])
+        participants.add(participantMatch[1].replace(/[^A-Za-z0-9_-]/g, ""))
       }
     }
 
@@ -184,84 +189,102 @@ export function sanitizeMermaidCode(code: string): string {
       }
 
       // Fix arrows that start without a participant (missing sender)
-      if (line.match(/^(--?>>?\+?|--?x)\s*\w+:/)) {
-        // This line starts with an arrow but no sender
-        // Use the last participant or try to infer from context
-        if (lastParticipant) {
-          const fixedLine = `${lastParticipant} ${line}`
-          processedLines.push(fixedLine)
+      if (line.match(/^(--?>>?\+?|--?x|--?)\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/)) {
+        const match = line.match(/^(--?>>?\+?|--?x|--?)\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/)
+        if (match) {
+          const arrow = match[1] === "--" ? "-->>" : match[1].includes(">>") ? match[1] : match[1] + ">>"
+          const receiver = match[2].replace(/[^A-Za-z0-9_-]/g, "")
+          const message = match[3]
 
-          // Extract the receiver for next iteration
-          const receiverMatch = fixedLine.match(/--?>>?\+?\s*(\w+):/)
-          if (receiverMatch) {
-            lastParticipant = receiverMatch[1]
-          }
-        } else {
-          // If no last participant, try to use the first available participant
-          const firstParticipant = Array.from(participants)[0]
-          if (firstParticipant) {
-            const fixedLine = `${firstParticipant} ${line}`
-            processedLines.push(fixedLine)
-
-            // Extract the receiver for next iteration
-            const receiverMatch = fixedLine.match(/--?>>?\+?\s*(\w+):/)
-            if (receiverMatch) {
-              lastParticipant = receiverMatch[1]
-            }
+          if (lastParticipant) {
+            processedLines.push(`${lastParticipant} ${arrow} ${receiver}: ${message}`)
+            lastParticipant = receiver
           } else {
-            // Skip this malformed line
-            continue
+            const firstParticipant = Array.from(participants)[0]
+            if (firstParticipant) {
+              processedLines.push(`${firstParticipant} ${arrow} ${receiver}: ${message}`)
+              lastParticipant = receiver
+            }
           }
         }
         continue
       }
 
-      // Process normal arrow lines
-      const arrowPatterns = [
-        /^(\w+)\s*(->>?\+?)\s*(\w+):\s*(.+)$/, // A->>B: message
-        /^(\w+)\s*(-->>?\+?)\s*(\w+):\s*(.+)$/, // A-->>B: message
-        /^(\w+)\s*(-x)\s*(\w+):\s*(.+)$/, // A-xB: message
-        /^(\w+)\s*(--x)\s*(\w+):\s*(.+)$/, // A--xB: message
-      ]
+      // Fix complete arrow lines with proper validation
+      const completeArrowMatch = line.match(
+        /^([A-Za-z0-9_-]+)\s*(->>?\+?|-->>?\+?|-x|--x)\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/,
+      )
+      if (completeArrowMatch) {
+        const [, sender, arrow, receiver, message] = completeArrowMatch
+        const cleanSender = sender.replace(/[^A-Za-z0-9_-]/g, "")
+        const cleanReceiver = receiver.replace(/[^A-Za-z0-9_-]/g, "")
 
-      let matched = false
-      for (const pattern of arrowPatterns) {
-        const match = line.match(pattern)
-        if (match) {
-          const [, sender, arrow, receiver, message] = match
-          processedLines.push(`${sender} ${arrow} ${receiver}: ${message}`)
-          lastParticipant = receiver
-          matched = true
-          break
+        if (cleanSender && cleanReceiver && message.trim()) {
+          processedLines.push(`${cleanSender} ${arrow} ${cleanReceiver}: ${message.trim()}`)
+          lastParticipant = cleanReceiver
         }
+        continue
       }
 
-      // If no pattern matched, try to fix common issues
-      if (!matched) {
-        // Check if it's a malformed arrow line
-        if (line.includes(">>") || line.includes("->") || line.includes("-x")) {
-          // Try to extract components and fix
-          const parts = line.split(/\s*(->>?\+?|-->>?\+?|-x|--x)\s*/)
-          if (parts.length >= 3) {
-            const sender = parts[0] || lastParticipant || Array.from(participants)[0] || "Unknown"
-            const arrow = parts[1]
-            const rest = parts.slice(2).join("")
+      // Fix incomplete arrows like "A -- B: message" or "A - B: message"
+      const incompleteArrowMatch = line.match(/^([A-Za-z0-9_-]+)\s+(--?)\s+([A-Za-z0-9_-]+)\s*:\s*(.+)$/)
+      if (incompleteArrowMatch) {
+        const [, sender, arrow, receiver, message] = incompleteArrowMatch
+        const cleanSender = sender.replace(/[^A-Za-z0-9_-]/g, "")
+        const cleanReceiver = receiver.replace(/[^A-Za-z0-9_-]/g, "")
+        const fixedArrow = arrow === "--" ? "-->>" : "->"
 
-            if (rest.includes(":")) {
-              const [receiver, ...messageParts] = rest.split(":")
-              const message = messageParts.join(":").trim()
-              if (receiver && message) {
-                processedLines.push(`${sender} ${arrow} ${receiver.trim()}: ${message}`)
-                lastParticipant = receiver.trim()
-                continue
-              }
+        if (cleanSender && cleanReceiver && message.trim()) {
+          processedLines.push(`${cleanSender} ${fixedArrow} ${cleanReceiver}: ${message.trim()}`)
+          lastParticipant = cleanReceiver
+        }
+        continue
+      }
+
+      // Fix missing arrows entirely like "A B: message"
+      const missingArrowMatch = line.match(/^([A-Za-z0-9_-]+)\s+([A-Za-z0-9_-]+)\s*:\s*(.+)$/)
+      if (missingArrowMatch) {
+        const [, sender, receiver, message] = missingArrowMatch
+        const cleanSender = sender.replace(/[^A-Za-z0-9_-]/g, "")
+        const cleanReceiver = receiver.replace(/[^A-Za-z0-9_-]/g, "")
+
+        // Only process if both are valid participant names
+        if (
+          cleanSender &&
+          cleanReceiver &&
+          message.trim() &&
+          (participants.has(cleanSender) || participants.has(cleanReceiver))
+        ) {
+          processedLines.push(`${cleanSender} ->> ${cleanReceiver}: ${message.trim()}`)
+          lastParticipant = cleanReceiver
+        }
+        continue
+      }
+
+      // If no pattern matched and it contains a colon, try to salvage it
+      if (line.includes(":") && !line.startsWith("note") && !line.startsWith("title")) {
+        const parts = line.split(":")
+        if (parts.length >= 2) {
+          const beforeColon = parts[0].trim()
+          const afterColon = parts.slice(1).join(":").trim()
+
+          // Try to extract two participant names from before colon
+          const words = beforeColon.split(/\s+/).filter((w) => w.length > 0)
+          if (words.length >= 2) {
+            const sender = words[0].replace(/[^A-Za-z0-9_-]/g, "")
+            const receiver = words[words.length - 1].replace(/[^A-Za-z0-9_-]/g, "")
+
+            if (sender && receiver && afterColon) {
+              processedLines.push(`${sender} ->> ${receiver}: ${afterColon}`)
+              lastParticipant = receiver
+            }
+          } else if (words.length === 1 && lastParticipant) {
+            const receiver = words[0].replace(/[^A-Za-z0-9_-]/g, "")
+            if (receiver && afterColon) {
+              processedLines.push(`${lastParticipant} ->> ${receiver}: ${afterColon}`)
+              lastParticipant = receiver
             }
           }
-        }
-
-        // If we still can't fix it, skip the line or add it as-is if it looks valid
-        if (line.length > 0 && !line.includes(">>") && !line.includes("->")) {
-          processedLines.push(line)
         }
       }
     }
@@ -269,7 +292,7 @@ export function sanitizeMermaidCode(code: string): string {
     sanitized = processedLines.join("\n")
   }
 
-  // Fix flowchart syntax errors
+  // Enhanced flowchart syntax fixing
   else if (sanitized.startsWith("graph") || sanitized.startsWith("flowchart")) {
     const lines = sanitized.split("\n")
     const processedLines = []
@@ -283,39 +306,55 @@ export function sanitizeMermaidCode(code: string): string {
 
       // First line is the graph declaration
       if (i === 0) {
-        processedLines.push(line)
+        // Ensure proper graph declaration
+        if (!line.match(/^(graph|flowchart)\s+(TD|TB|BT|RL|LR)$/i)) {
+          processedLines.push("graph TD")
+        } else {
+          processedLines.push(line)
+        }
         continue
       }
 
-      // Check if this line defines a node without connections
-      const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\]|$$\(.+$$\))$/
+      // Validate and fix node definitions
+      const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[\[.+\]\]|\[\/(.+)\/\])$/
       const nodeMatch = line.match(nodeDefRegex)
 
       if (nodeMatch) {
         const nodeId = nodeMatch[1]
-        processedLines.push(line)
+        const nodeShape = nodeMatch[2]
 
-        // Track this node for potential connections
-        if (!nodeConnections.has(nodeId)) {
-          nodeConnections.set(nodeId, [])
+        // Validate node shape syntax
+        if (nodeShape && nodeShape.length > 2) {
+          processedLines.push(line)
+          if (!nodeConnections.has(nodeId)) {
+            nodeConnections.set(nodeId, [])
+          }
         }
       }
-      // Check for connection lines
-      else if (line.includes("-->") || line.includes("---") || line.includes("==>")) {
-        processedLines.push(line)
-
-        // Extract node connections for tracking
-        const connectionMatch = line.match(/([A-Za-z0-9_-]+)\s*-->\s*([A-Za-z0-9_-]+)/)
+      // Check for connection lines and validate arrow syntax
+      else if (line.includes("-->") || line.includes("---") || line.includes("==>") || line.includes("-.->")) {
+        // Validate connection syntax
+        const connectionMatch = line.match(/([A-Za-z0-9_-]+)\s*(-->|---|==>|-.->|\|.+\|)\s*([A-Za-z0-9_-]+)/)
         if (connectionMatch) {
-          const [, from, to] = connectionMatch
+          processedLines.push(line)
+          const [, from, , to] = connectionMatch
           if (!nodeConnections.has(from)) nodeConnections.set(from, [])
           if (!nodeConnections.has(to)) nodeConnections.set(to, [])
           nodeConnections.get(from)?.push(to)
+        } else {
+          // Try to fix malformed connections
+          const parts = line.split(/\s+/)
+          if (parts.length >= 3) {
+            const from = parts[0]
+            const to = parts[parts.length - 1]
+            if (from && to && from !== to) {
+              processedLines.push(`${from} --> ${to}`)
+            }
+          }
         }
       }
-      // Check if this line is missing arrow syntax but has multiple nodes
-      else if (line.includes("[") && !line.includes("-->") && !line.includes("---") && !line.includes("==>")) {
-        // Try to extract node IDs and create a connection
+      // Try to fix lines with missing arrows
+      else if (line.includes("[") && !line.includes("-->")) {
         const parts = line.split(/\s+/)
         if (parts.length >= 2) {
           const firstNodeId = parts[0]
@@ -331,25 +370,10 @@ export function sanitizeMermaidCode(code: string): string {
           processedLines.push(line)
         }
       } else {
-        processedLines.push(line)
-      }
-    }
-
-    // Check for orphaned nodes and try to connect them
-    const connectedNodes = new Set<string>()
-    for (const [node, connections] of nodeConnections) {
-      if (connections.length > 0) {
-        connectedNodes.add(node)
-        connections.forEach((conn) => connectedNodes.add(conn))
-      }
-    }
-
-    // Find orphaned nodes and connect them to the flow
-    const orphanedNodes = Array.from(nodeConnections.keys()).filter((node) => !connectedNodes.has(node))
-    if (orphanedNodes.length > 0 && connectedNodes.size > 0) {
-      const lastConnectedNode = Array.from(connectedNodes)[connectedNodes.size - 1]
-      for (const orphan of orphanedNodes) {
-        processedLines.push(`${lastConnectedNode} --> ${orphan}`)
+        // Keep other valid lines (styling, etc.)
+        if (line.startsWith("style") || line.startsWith("class") || line.startsWith("click")) {
+          processedLines.push(line)
+        }
       }
     }
 
@@ -373,28 +397,58 @@ export function sanitizeMermaidCode(code: string): string {
         continue
       }
 
-      // Check if this line is a task without proper format
-      if (!line.includes(":") || (line.includes(":") && line.split(":").length < 3)) {
-        // Try to convert it to proper task format
-        const taskName = line.replace(/:/g, "").trim()
-        if (taskName) {
-          processedLines.push(`  ${taskName}: 3: Me`)
-        }
-      } else {
-        // Check if it has the right format (task: score: actor)
+      // Validate and fix task format
+      if (line.includes(":")) {
         const parts = line.split(":")
         if (parts.length >= 3) {
-          processedLines.push(line)
+          // Proper format: task: score: actor
+          const task = parts[0].trim()
+          const score = parts[1].trim()
+          const actor = parts.slice(2).join(":").trim()
+
+          // Validate score is a number between 1-5
+          const scoreNum = Number.parseInt(score)
+          const validScore = isNaN(scoreNum) ? 3 : Math.max(1, Math.min(5, scoreNum))
+
+          processedLines.push(`  ${task}: ${validScore}: ${actor || "User"}`)
         } else if (parts.length === 2) {
           // Missing actor, add default
-          processedLines.push(`${line}: Me`)
+          const task = parts[0].trim()
+          const score = parts[1].trim()
+          const scoreNum = Number.parseInt(score)
+          const validScore = isNaN(scoreNum) ? 3 : Math.max(1, Math.min(5, scoreNum))
+
+          processedLines.push(`  ${task}: ${validScore}: User`)
         } else {
-          processedLines.push(line)
+          // Only task name, add defaults
+          const taskName = parts[0].trim()
+          if (taskName) {
+            processedLines.push(`  ${taskName}: 3: User`)
+          }
+        }
+      } else {
+        // No colon, treat as task name with defaults
+        const taskName = line.trim()
+        if (
+          taskName &&
+          !taskName.startsWith("journey") &&
+          !taskName.startsWith("title") &&
+          !taskName.startsWith("section")
+        ) {
+          processedLines.push(`  ${taskName}: 3: User`)
         }
       }
     }
 
     sanitized = processedLines.join("\n")
+  }
+
+  // Final validation - if the sanitized code is empty or too short, return an error diagram
+  if (!sanitized || sanitized.length < 10) {
+    return `graph TD
+      A[Error: Empty or Invalid Diagram] --> B[Please provide a valid diagram description]
+      style A fill:#ffcccc
+      style B fill:#ffffcc`
   }
 
   return sanitized
