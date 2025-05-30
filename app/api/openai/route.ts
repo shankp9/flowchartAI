@@ -48,44 +48,96 @@ export async function POST(req: NextRequest) {
     }`,
       }
     } else {
-      // Enhanced system message with comprehensive error prevention
-      const retryInstructions = getRetryInstructions(retryAttempt, previousErrors)
-      const contextInstructions = getContextInstructions(isModification, currentDiagram)
-      const diagramSpecificInstructions = getDiagramSpecificInstructions(diagramType)
+      // Enhanced system message with retry-specific instructions
+      const retryInstructions =
+        retryAttempt > 0
+          ? `
+
+CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
+- This is a retry attempt due to previous syntax errors
+- Previous errors: ${previousErrors.join("; ")}
+- Use ONLY the most basic, validated Mermaid syntax
+- Avoid complex features that might cause parsing errors
+- Start directly with diagram type keyword
+- Use simple node names without special characters
+- Ensure all arrows and connections are properly formatted
+- Double-check every line for syntax correctness
+- NO explanatory text, ONLY valid Mermaid code
+
+RETRY FOCUS:
+${retryAttempt === 1 ? "- Simplify syntax and use basic examples" : ""}
+${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
+`
+          : ""
+
+      // Context handling for modifications
+      const contextInstructions =
+        isModification && currentDiagram
+          ? `
+
+MODIFICATION CONTEXT:
+You are modifying an existing diagram. Here is the current diagram code:
+
+\`\`\`mermaid
+${currentDiagram}
+\`\`\`
+
+MODIFICATION RULES:
+- Build upon the existing diagram structure
+- Maintain existing nodes and connections where possible
+- Add the requested improvements while preserving the core flow
+- Keep the same diagram type unless explicitly asked to change
+- Ensure all existing functionality remains intact
+- Only modify what's specifically requested
+`
+          : ""
 
       systemMessage = {
         role: "system",
         content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
 
-CRITICAL RULES - NEVER VIOLATE THESE:
-1. ALWAYS start your response directly with the diagram type keyword (graph, sequenceDiagram, etc.)
-2. NEVER include explanatory text, comments, or descriptions
-3. NEVER use words like "ERROR", "UNDEFINED", "NULL", "INVALID", "PARSE ERROR"
-4. NEVER start lines with arrows without specifying the sender
-5. ALWAYS use proper Mermaid syntax as per official documentation
-6. ALWAYS ensure all brackets, parentheses, and quotes are properly matched
-7. NEVER use special characters that aren't part of Mermaid syntax
-8. ALWAYS validate each line follows proper Mermaid patterns
+CRITICAL RULES:
+1. NEVER include explanatory text before or after the diagram code
+2. ALWAYS start your response directly with the diagram type keyword
+3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
+4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
+5. NEVER start a line with just an arrow (-->> or ->>)
+6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
+7. ALWAYS use proper Mermaid syntax for each diagram type
+8. Use simple, alphanumeric node names without special characters
+9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
 
-${retryInstructions}
-${contextInstructions}
-${diagramSpecificInstructions}
+SEQUENCE DIAGRAM SYNTAX RULES:
+- CORRECT: "ParticipantA ->> ParticipantB: Message"
+- CORRECT: "ParticipantA -->> ParticipantB: Response"
+- INCORRECT: "->> ParticipantB: Message" (missing sender)
+- INCORRECT: "-->> ParticipantB: Response" (missing sender)
 
-RESPONSE FORMAT:
-- Start immediately with diagram type (e.g., "graph TD" or "sequenceDiagram")
-- Follow with properly formatted Mermaid syntax
-- End when diagram is complete
-- NO additional text or explanations
+FLOWCHART SYNTAX RULES:
+- CORRECT: "A[Start] --> B[Process] --> C[End]"
+- INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
 
-VALIDATION CHECKLIST:
-✓ Starts with valid diagram type
-✓ All node names are alphanumeric
-✓ All connections use proper arrow syntax
-✓ All brackets and quotes are matched
-✓ No error keywords present
-✓ Follows official Mermaid documentation
+ER DIAGRAM SYNTAX RULES:
+- CORRECT: "CUSTOMER ||--o{ ORDER : places"
+- CORRECT: "USER { int id PK }"
+- INCORRECT: "USER ERROR -- ERROR_TYPE : Below"
 
-RESPOND WITH VALID MERMAID CODE ONLY!`,
+CLASS DIAGRAM SYNTAX RULES:
+- CORRECT: "class User { +String name +login() }"
+- CORRECT: "User --> System"
+- INCORRECT: "class User ERROR IDENTIFYING"
+
+VALID DIAGRAM TYPES:
+- graph TD / graph LR (flowchart)
+- sequenceDiagram
+- classDiagram
+- journey
+- gantt
+- stateDiagram-v2
+- erDiagram
+- pie
+
+RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
       }
     }
 
@@ -97,10 +149,10 @@ RESPOND WITH VALID MERMAID CODE ONLY!`,
       const lastMessage = processedMessages[processedMessages.length - 1]
 
       if (lastMessage && lastMessage.role === "user") {
-        // Enhance the user message with context for the AI
+        // Enhance the user message with context for the AI, but this won't be shown to the user
         const enhancedContent = `${lastMessage.content}
 
-MODIFICATION CONTEXT: Build upon this existing diagram while maintaining its structure and adding the requested changes.`
+Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
 
         // Replace the last message with the enhanced version
         processedMessages[processedMessages.length - 1] = {
@@ -120,11 +172,8 @@ MODIFICATION CONTEXT: Build upon this existing diagram while maintaining its str
         model,
         messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
-        temperature: getTemperatureForAttempt(retryAttempt),
-        max_tokens: isSummaryRequest ? 300 : 1200,
-        top_p: 0.9,
-        frequency_penalty: 0.1,
-        presence_penalty: 0.1,
+        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
+        max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
 
@@ -210,108 +259,5 @@ MODIFICATION CONTEXT: Build upon this existing diagram while maintaining its str
   } catch (error) {
     console.error("API route error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-function getRetryInstructions(retryAttempt: number, previousErrors: string[]): string {
-  if (retryAttempt === 0) return ""
-
-  const errorContext =
-    previousErrors.length > 0
-      ? `\nPREVIOUS ERRORS TO AVOID:\n${previousErrors.map((err, i) => `${i + 1}. ${err}`).join("\n")}`
-      : ""
-
-  switch (retryAttempt) {
-    case 1:
-      return `
-RETRY ATTEMPT 2/3 - SIMPLIFY APPROACH:
-- Use only basic, proven Mermaid syntax patterns
-- Avoid complex features or advanced syntax
-- Use simple alphanumeric node names only
-- Ensure every line follows basic patterns${errorContext}`
-
-    case 2:
-      return `
-FINAL RETRY ATTEMPT 3/3 - MINIMAL SYNTAX ONLY:
-- Use the most basic Mermaid syntax possible
-- Copy patterns from official Mermaid documentation
-- Use only single-word node names
-- Avoid any advanced or complex features
-- Ensure absolute syntax correctness${errorContext}`
-
-    default:
-      return ""
-  }
-}
-
-function getContextInstructions(isModification: boolean, currentDiagram: string): string {
-  if (!isModification || !currentDiagram) return ""
-
-  return `
-MODIFICATION MODE - EXISTING DIAGRAM:
-${currentDiagram}
-
-MODIFICATION RULES:
-- Preserve the existing diagram structure
-- Maintain all current nodes and connections
-- Add only the requested changes
-- Keep the same diagram type
-- Ensure compatibility with existing elements`
-}
-
-function getDiagramSpecificInstructions(diagramType: string | null): string {
-  switch (diagramType) {
-    case "flowchart":
-      return `
-FLOWCHART SPECIFIC RULES:
-- Start with "graph TD" or "graph LR"
-- Use format: NodeID[Label] --> NodeID2[Label2]
-- Valid shapes: [] {} () (()) >] 
-- Always include arrows between connected nodes`
-
-    case "sequence":
-      return `
-SEQUENCE DIAGRAM SPECIFIC RULES:
-- Start with "sequenceDiagram"
-- Declare participants: participant Name
-- Use format: ParticipantA ->> ParticipantB: Message
-- Valid arrows: ->> -->> -x --x
-- NEVER start lines with arrows without sender`
-
-    case "class":
-      return `
-CLASS DIAGRAM SPECIFIC RULES:
-- Start with "classDiagram"
-- Use format: class ClassName { +method() }
-- Relationships: --> <|-- --|> <--
-- Methods: +public -private #protected`
-
-    case "er":
-      return `
-ER DIAGRAM SPECIFIC RULES:
-- Start with "erDiagram"
-- Entity format: ENTITY { type field }
-- Relationships: ||--o{ ||--|| }o--||
-- Always include relationship labels`
-
-    default:
-      return `
-GENERAL DIAGRAM RULES:
-- Use appropriate diagram type keyword
-- Follow official Mermaid syntax exactly
-- Ensure all syntax is valid and complete`
-  }
-}
-
-function getTemperatureForAttempt(retryAttempt: number): number {
-  switch (retryAttempt) {
-    case 0:
-      return 0.3 // First attempt - creative but controlled
-    case 1:
-      return 0.1 // Second attempt - very conservative
-    case 2:
-      return 0.05 // Final attempt - minimal creativity
-    default:
-      return 0.3
   }
 }

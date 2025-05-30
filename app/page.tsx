@@ -11,7 +11,6 @@ import {
   Eye,
   EyeOff,
   Clock,
-  Shield,
 } from "lucide-react"
 
 import { Mermaid } from "@/components/Mermaids"
@@ -20,7 +19,7 @@ import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
-import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode, createFallbackDiagram } from "@/lib/utils"
+import { parseCodeFromMessage, sanitizeMermaidCode, validateMermaidCode } from "@/lib/utils"
 
 // Example diagrams for different types
 const EXAMPLE_DIAGRAMS = {
@@ -187,7 +186,7 @@ export default function Home() {
     }
   }, [])
 
-  // Enhanced diagram generation with intelligent retry and fallback logic
+  // Enhanced diagram generation with automatic retry logic
   const generateDiagramWithRetry = useCallback(
     async (
       userMessage: string,
@@ -212,7 +211,7 @@ export default function Home() {
             model: "gpt-3.5-turbo",
             retryAttempt: attemptNumber,
             previousErrors: previousErrors,
-            currentDiagram: outputCode,
+            currentDiagram: outputCode, // Send current diagram for context
             isModification: isModification,
             diagramType: diagramType,
           }),
@@ -245,36 +244,23 @@ export default function Home() {
           }
         }
 
-        // Enhanced parsing and validation
+        // Parse and sanitize the code
         const parsedCode = parseCodeFromMessage(code)
-        if (!parsedCode) {
-          throw new Error("No valid Mermaid code found in response")
-        }
-
         const sanitizedCode = sanitizeMermaidCode(parsedCode)
-        if (!sanitizedCode) {
-          throw new Error("Code sanitization failed")
-        }
 
-        // Comprehensive validation
+        // Validate the generated code
         const validationResult = validateMermaidCode(sanitizedCode)
 
-        if (validationResult.isValid) {
+        if (validationResult.isValid && sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
           return { success: true, code: sanitizedCode }
         } else {
-          const errorMessage = `Validation failed: ${validationResult.errors.join("; ")}`
-
-          // For high severity errors or if we've reached max retries, try fallback
-          if (validationResult.severity === "high" || attemptNumber >= maxRetries - 1) {
-            console.warn(`Creating fallback diagram due to: ${errorMessage}`)
-            const fallbackCode = createFallbackDiagram(sanitizedCode, diagramType)
-            return { success: true, code: fallbackCode }
-          }
+          const errorMessage = validationResult.errors.join("; ") || "Invalid diagram syntax generated"
 
           // If we haven't reached max retries, try again
           if (attemptNumber < maxRetries - 1) {
             console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
 
+            // Add this error to the history
             const newErrors = [...previousErrors, errorMessage]
             setRetryHistory(newErrors)
             setRetryAttempts(attemptNumber + 1)
@@ -290,9 +276,7 @@ export default function Home() {
               isModification,
             )
           } else {
-            // Final fallback
-            const fallbackCode = createFallbackDiagram(sanitizedCode, diagramType)
-            return { success: true, code: fallbackCode }
+            return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
           }
         }
       } catch (error) {
@@ -317,10 +301,7 @@ export default function Home() {
             isModification,
           )
         } else {
-          // Final fallback - create a basic diagram
-          const diagramType = detectDiagramType(userMessage)
-          const fallbackCode = createFallbackDiagram("", diagramType)
-          return { success: true, code: fallbackCode }
+          return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
         }
       }
     },
@@ -380,22 +361,18 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Final generation error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
 
-      // Even if everything fails, provide a basic fallback
-      const diagramType = detectDiagramType(draftMessage)
-      const fallbackCode = createFallbackDiagram("", diagramType)
-      setOutputCode(fallbackCode)
-
-      const fallbackMessage: Message = {
-        role: "assistant",
-        content: `⚠️ **Generated a basic diagram template**\n\nThere were issues with the specific request, so I've created a basic ${diagramType || "flowchart"} template that you can build upon.`,
+      // Show retry history in error message
+      if (retryHistory.length > 0) {
+        const retryInfo = `\n\nRetry attempts made:\n${retryHistory.map((err, i) => `• Attempt ${i + 1}: ${err}`).join("\n")}`
+        setError((prev) => prev + retryInfo)
       }
-      setMessages((prev) => [...prev, fallbackMessage])
     } finally {
       setIsLoading(false)
       setIsRetrying(false)
     }
-  }, [draftMessage, messages, generateDiagramWithRetry, generateSummaryAndSuggestions, retryAttempts])
+  }, [draftMessage, messages, generateDiagramWithRetry, generateSummaryAndSuggestions, retryAttempts, retryHistory])
 
   // Function to detect the diagram type from user input
   const detectDiagramType = (input: string): string | null => {
@@ -441,7 +418,7 @@ export default function Home() {
     async (suggestion: string) => {
       const newMessage: Message = {
         role: "user",
-        content: suggestion,
+        content: suggestion, // Just show the clean suggestion text to user
       }
       const newMessages = [...messages, newMessage]
 
@@ -456,6 +433,7 @@ export default function Home() {
 
       try {
         setIsRetrying(true)
+        // Pass true for isModification since suggestions are always modifications
         const result = await generateDiagramWithRetry(suggestion, messages, 0, [], true)
 
         if (result.success && result.code) {
@@ -467,22 +445,13 @@ export default function Home() {
         }
       } catch (error) {
         console.error("Suggestion generation error:", error)
-
-        // Fallback for suggestions too
-        const fallbackCode = createFallbackDiagram(outputCode, "flowchart")
-        setOutputCode(fallbackCode)
-
-        const fallbackMessage: Message = {
-          role: "assistant",
-          content: `⚠️ **Applied basic improvement**\n\nThere were issues applying the specific suggestion, so I've made a basic improvement to the diagram.`,
-        }
-        setMessages((prev) => [...prev, fallbackMessage])
+        setError(error instanceof Error ? error.message : "An error occurred")
       } finally {
         setIsLoading(false)
         setIsRetrying(false)
       }
     },
-    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions, outputCode],
+    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
   )
 
   const handleRetry = useCallback(() => {
@@ -503,10 +472,13 @@ export default function Home() {
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
     if (chatVisible && canvasVisible) {
+      // Both visible - hide chat
       setChatVisible(false)
     } else if (!chatVisible && canvasVisible) {
+      // Only canvas visible - show chat
       setChatVisible(true)
     } else if (chatVisible && !canvasVisible) {
+      // Only chat visible - show canvas if we have content
       if (outputCode) {
         setCanvasVisible(true)
       }
@@ -515,12 +487,15 @@ export default function Home() {
 
   const toggleCanvasVisibility = () => {
     if (chatVisible && canvasVisible) {
+      // Both visible - hide canvas
       setCanvasVisible(false)
     } else if (chatVisible && !canvasVisible) {
+      // Only chat visible - show canvas if we have content
       if (outputCode) {
         setCanvasVisible(true)
       }
     } else if (!chatVisible && canvasVisible) {
+      // Only canvas visible - show chat
       setChatVisible(true)
     }
   }
@@ -631,14 +606,13 @@ export default function Home() {
 
               <div className="flex flex-wrap justify-center gap-2 pt-4">
                 <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                  <Shield className="h-3 w-3 mr-1" />
-                  Error-Proof
-                </Badge>
-                <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
                   Auto-Retry
                 </Badge>
+                <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                  Error Correction
+                </Badge>
                 <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
-                  Fallback Safe
+                  Valid Syntax
                 </Badge>
               </div>
             </div>
@@ -723,8 +697,7 @@ export default function Home() {
               {outputCode && (
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Protected
+                    Valid Syntax
                   </Badge>
                   <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
                     Context-Aware
