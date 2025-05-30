@@ -32,18 +32,11 @@ interface MermaidProps {
   isFullscreen?: boolean
   onFullscreenChange?: (fullscreen: boolean) => void
   isStandalone?: boolean
-  onRenderError?: (errorMessage: string, faultyCode: string) => void // New prop
 }
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
-export function Mermaid({
-  chart,
-  isFullscreen = false,
-  onFullscreenChange,
-  isStandalone = false,
-  onRenderError,
-}: MermaidProps) {
+export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
@@ -629,16 +622,15 @@ export function Mermaid({
             try {
               container.appendChild(successDiv)
               setTimeout(() => {
-                try {
-                  if (successDiv.parentNode === container) {
-                    container.removeChild(successDiv)
-                  } else if (successDiv.parentNode) {
-                    successDiv.parentNode.removeChild(successDiv)
-                  }
-                } catch (e) {
-                  console.warn("Error removing success message:", e)
-                  if (container.contains(successDiv)) {
-                    container.innerHTML = container.innerHTML
+                // Check if successDiv is still a child of the current container instance
+                if (containerRef.current && successDiv.parentNode === containerRef.current) {
+                  try {
+                    containerRef.current.removeChild(successDiv)
+                  } catch (e) {
+                    console.warn(
+                      "Failed to remove success message, it might have been already removed or container changed:",
+                      e,
+                    )
                   }
                 }
               }, 5000)
@@ -654,22 +646,63 @@ export function Mermaid({
           const errorDiv = document.createElement("div")
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
 
-          errorDiv.innerHTML = `
-            <div class="font-semibold mb-2 text-lg">Diagram Rendering Error</div>
-            <div class="text-sm text-red-600 bg-red-50 p-3 rounded-lg">${errorMessage}</div>
-            <div class="text-xs text-gray-500 mt-2">Attempting to auto-correct...</div>
+          let errorContent = `
+            <div class="font-semibold mb-4 text-lg">Diagram Rendering Error</div>
+            <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">${errorMessage}</div>
           `
-          try {
-            container.innerHTML = "" // Clear previous content before adding error
-            container.appendChild(errorDiv)
-          } catch (e) {
-            console.warn("Error adding error message to container:", e)
+
+          if (errorMessage.includes("Parse error") || errorMessage.includes("Expecting")) {
+            errorContent += `
+              <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+                <strong class="block mb-2">Common fixes:</strong>
+                • Check arrow syntax in sequence diagrams (-&gt;&gt;, --&gt;&gt;, -x)<br>
+                • Ensure participant names don't contain spaces or special characters<br>
+                • Verify all connections have proper arrow syntax (--&gt;)<br>
+                • Make sure all brackets and quotes are properly closed
+              </div>
+            `
           }
 
-          // Call the onRenderError callback if provided
-          if (onRenderError) {
-            onRenderError(errorMessage, cleanedCode)
+          const buttonLayout = screenSize === "mobile" ? "flex-col space-y-2" : "space-x-3"
+          errorContent += `
+            <div class="flex ${buttonLayout}">
+              <button class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium" id="show-code-btn">
+                Show Diagram Code
+              </button>
+              <button class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors font-medium" id="retry-simplified-btn">
+                Try Simplified Version
+              </button>
+            </div>
+          `
+
+          errorDiv.innerHTML = errorContent
+
+          try {
+            container.innerHTML = ""
+            container.appendChild(errorDiv)
+          } catch (e) {
+            console.warn("Error adding error message:", e)
           }
+
+          setTimeout(() => {
+            const showCodeBtn = document.getElementById("show-code-btn")
+            const retryBtn = document.getElementById("retry-simplified-btn")
+
+            if (showCodeBtn) {
+              showCodeBtn.addEventListener("click", () => setShowCode(true))
+            }
+
+            if (retryBtn) {
+              retryBtn.addEventListener("click", async () => {
+                try {
+                  const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+                  await renderChart(simplifiedCode, selectedTheme)
+                } catch (e) {
+                  console.error("Simplified render also failed:", e)
+                }
+              })
+            }
+          }, 0)
         }
       } catch (error) {
         console.error("Mermaid rendering error:", error)
@@ -678,7 +711,7 @@ export function Mermaid({
         setIsRendering(false)
       }
     },
-    [isClient, autoFit, handleFitToScreen, isDragging, screenSize, interactionMode, selectedElement, onRenderError],
+    [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
   )
 
   // Update transform when zoom or pan changes

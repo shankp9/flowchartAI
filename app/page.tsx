@@ -71,9 +71,6 @@ export default function Home() {
   const [retryHistory, setRetryHistory] = useState<string[]>([])
   const [isRetrying, setIsRetrying] = useState(false)
 
-  // Add new state for refinement attempt
-  const [isRefiningAttempt, setIsRefiningAttempt] = useState(false)
-
   // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatScrollContainerRef = useRef<HTMLDivElement>(null)
@@ -189,26 +186,20 @@ export default function Home() {
     }
   }, [])
 
-  // Modify generateDiagramWithRetry to accept an optional refinedPrompt
+  // Enhanced diagram generation with automatic retry logic
   const generateDiagramWithRetry = useCallback(
     async (
-      userMessage: string, // This can be the original user message or the refined prompt
+      userMessage: string,
       currentMessages: Message[],
       attemptNumber = 0,
       previousErrors: string[] = [],
       isModification = false,
-      isRefinement = false, // New flag
     ): Promise<{ success: boolean; code?: string; error?: string }> => {
       const maxRetries = 3
 
       try {
-        const diagramType = detectDiagramType(userMessage) // Detect from the core user message
-
-        // Construct the messages for the API
-        // If it's a refinement, the userMessage already contains the full context for AI
-        const apiMessages = isRefinement
-          ? [{ role: "user", content: userMessage }] // The userMessage is the full refined prompt
-          : [...currentMessages, { role: "user", content: userMessage }]
+        // Determine if the user is asking for a specific diagram type
+        const diagramType = detectDiagramType(userMessage)
 
         const response = await fetch("/api/openai", {
           method: "POST",
@@ -216,12 +207,12 @@ export default function Home() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            messages: apiMessages, // Use the constructed apiMessages
+            messages: [...currentMessages, { role: "user", content: userMessage }],
             model: "gpt-3.5-turbo",
             retryAttempt: attemptNumber,
             previousErrors: previousErrors,
-            currentDiagram: isRefinement ? outputCode : outputCode, // Provide current (faulty) code for refinement context
-            isModification: isModification || isRefinement, // Refinement is a type of modification
+            currentDiagram: outputCode, // Send current diagram for context
+            isModification: isModification,
             diagramType: diagramType,
           }),
         })
@@ -248,7 +239,7 @@ export default function Home() {
           code += chunkValue
 
           // Update draft code for real-time feedback
-          if (attemptNumber === 0 && !isRefinement) {
+          if (attemptNumber === 0) {
             setDraftOutputCode((prevCode) => prevCode + chunkValue)
           }
         }
@@ -283,7 +274,6 @@ export default function Home() {
               attemptNumber + 1,
               newErrors,
               isModification,
-              isRefinement,
             )
           } else {
             return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
@@ -294,109 +284,95 @@ export default function Home() {
 
         // If we haven't reached max retries, try again
         if (attemptNumber < maxRetries - 1) {
-          console.warn(`Attempt ${attemptNumber + 1} (catch block) failed: ${errorMessage}. Retrying...`)
+          console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)
 
           const newErrors = [...previousErrors, errorMessage]
           setRetryHistory(newErrors)
           setRetryAttempts(attemptNumber + 1)
 
           // Wait a brief moment before retrying
-          await new Promise((resolve) => setTimeout(resolve, 1200 + attemptNumber * 500))
+          await new Promise((resolve) => setTimeout(resolve, 1000))
 
-          return generateDiagramWithRetry(
+          return await generateDiagramWithRetry(
             userMessage,
             currentMessages,
             attemptNumber + 1,
             newErrors,
             isModification,
-            isRefinement,
           )
         } else {
-          return { success: false, error: `Failed after ${maxRetries} attempts (catch). Last error: ${errorMessage}` }
+          return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
         }
       }
     },
     [outputCode],
   )
 
-  const handleSubmit = useCallback(
-    async (messageContent?: string) => {
-      // Allow passing message content directly
-      const currentMessage = messageContent || draftMessage
-      if (!currentMessage.trim()) return
+  const handleSubmit = useCallback(async () => {
+    if (!draftMessage.trim()) {
+      return
+    }
 
-      setIsRefiningAttempt(false) // Reset refinement state for new submissions
+    const newMessage: Message = {
+      role: "user",
+      content: draftMessage,
+    }
+    const newMessages = [...messages, newMessage]
 
-      const newMessage: Message = {
-        role: "user",
-        content: currentMessage,
-      }
-      const newMessages = [...messages, newMessage]
+    setMessages(newMessages)
+    setDraftMessage("")
+    setDraftOutputCode("")
+    setIsLoading(true)
+    setIsRetrying(false)
+    setError("")
+    setRetryCount(0)
+    setRetryAttempts(0)
+    setRetryHistory([])
 
-      setMessages(newMessages)
-      setDraftMessage("")
-      setDraftOutputCode("")
-      setIsLoading(true)
-      setIsRetrying(false)
-      setError("")
-      setRetryCount(0)
-      setRetryAttempts(0)
-      setRetryHistory([])
+    // Check if this is a modification request
+    const isModificationRequest =
+      draftMessage.toLowerCase().includes("add") ||
+      draftMessage.toLowerCase().includes("modify") ||
+      draftMessage.toLowerCase().includes("change") ||
+      draftMessage.toLowerCase().includes("update") ||
+      draftMessage.toLowerCase().includes("improve") ||
+      draftMessage.toLowerCase().includes("refine") ||
+      draftMessage.toLowerCase().includes("enhance")
 
-      // Check if this is a modification request
-      const isModificationRequest =
-        currentMessage.toLowerCase().includes("add") ||
-        currentMessage.toLowerCase().includes("modify") ||
-        currentMessage.toLowerCase().includes("change") ||
-        currentMessage.toLowerCase().includes("update") ||
-        currentMessage.toLowerCase().includes("improve") ||
-        currentMessage.toLowerCase().includes("refine") ||
-        currentMessage.toLowerCase().includes("enhance")
+    try {
+      setIsRetrying(true)
+      const result = await generateDiagramWithRetry(draftMessage, messages, 0, [], isModificationRequest)
 
-      try {
-        setIsRetrying(true)
-        const result = await generateDiagramWithRetry(currentMessage, messages, 0, [], isModificationRequest, false)
+      if (result.success && result.code) {
+        setOutputCode(result.code)
+        setDraftOutputCode("")
+        await generateSummaryAndSuggestions(result.code)
 
-        if (result.success && result.code) {
-          setOutputCode(result.code)
-          setDraftOutputCode("")
-          await generateSummaryAndSuggestions(result.code)
-
-          // Add success message if there were retries
-          if (retryAttempts > 0) {
-            const retryMessage: Message = {
-              role: "assistant",
-              content: `✅ **Diagram generated successfully after ${retryAttempts + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
-            }
-            setMessages((prev) => [...prev, retryMessage])
+        // Add success message if there were retries
+        if (retryAttempts > 0) {
+          const retryMessage: Message = {
+            role: "assistant",
+            content: `✅ **Diagram generated successfully after ${retryAttempts + 1} attempts!**\n\nThe system automatically corrected syntax issues to ensure proper rendering.`,
           }
-        } else {
-          throw new Error(result.error || "Failed to generate valid diagram")
+          setMessages((prev) => [...prev, retryMessage])
         }
-      } catch (error) {
-        console.error("Final generation error:", error)
-        setError(error instanceof Error ? error.message : "An error occurred")
-
-        // Show retry history in error message
-        if (retryHistory.length > 0) {
-          const retryInfo = `\n\nRetry attempts made:\n${retryHistory.map((err, i) => `• Attempt ${i + 1}: ${err}`).join("\n")}`
-          setError((prev) => prev + retryInfo)
-        }
-      } finally {
-        setIsLoading(false)
-        setIsRetrying(false)
+      } else {
+        throw new Error(result.error || "Failed to generate valid diagram")
       }
-    },
-    [
-      draftMessage,
-      messages,
-      generateDiagramWithRetry,
-      generateSummaryAndSuggestions,
-      retryAttempts,
-      retryHistory,
-      outputCode,
-    ],
-  )
+    } catch (error) {
+      console.error("Final generation error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
+
+      // Show retry history in error message
+      if (retryHistory.length > 0) {
+        const retryInfo = `\n\nRetry attempts made:\n${retryHistory.map((err, i) => `• Attempt ${i + 1}: ${err}`).join("\n")}`
+        setError((prev) => prev + retryInfo)
+      }
+    } finally {
+      setIsLoading(false)
+      setIsRetrying(false)
+    }
+  }, [draftMessage, messages, generateDiagramWithRetry, generateSummaryAndSuggestions, retryAttempts, retryHistory])
 
   // Function to detect the diagram type from user input
   const detectDiagramType = (input: string): string | null => {
@@ -478,86 +454,20 @@ export default function Home() {
     [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
   )
 
-  // New handler for render errors from Mermaid component
-  const handleRenderError = useCallback(
-    async (errorMessage: string, faultyCode: string) => {
-      console.warn("Mermaid rendering error reported to Home:", errorMessage, "Faulty Code:", faultyCode)
-      setError(`Diagram rendering failed: ${errorMessage}. Attempting to auto-correct...`)
-      setIsRefiningAttempt(true)
-      setIsLoading(true) // Show loading state during refinement
-
-      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
-      if (!lastUserMessage) {
-        setError("Could not find the original request to refine the diagram.")
-        setIsLoading(false)
-        setIsRefiningAttempt(false)
-        return
-      }
-
-      const refinedPrompt = `My previous request was: "${lastUserMessage.content}"
-The Mermaid code you generated resulted in a rendering error: "${errorMessage}".
-Here is the problematic code:
-\`\`\`mermaid
-${faultyCode}
-\`\`\`
-Please analyze my original request and the faulty code, then provide a corrected and valid Mermaid diagram. Output only the corrected Mermaid code block.`
-
-      // Add a system message indicating refinement
-      const refinementSystemMessage: Message = {
-        role: "assistant", // Or system, depending on how you want to display it
-        content: `⚠️ Diagram has a syntax issue. Attempting to automatically correct it based on your last request...`,
-      }
-      setMessages((prev) => [...prev, refinementSystemMessage])
-
-      try {
-        // Use generateDiagramWithRetry for the refinement attempt
-        // The `messages` array passed here is for context if needed by API, but refinedPrompt is the main driver
-        const result = await generateDiagramWithRetry(refinedPrompt, messages, 0, [errorMessage], true, true) // isModification=true, isRefinement=true
-
-        if (result.success && result.code) {
-          setOutputCode(result.code)
-          setDraftOutputCode("") // Clear draft
-          setError("") // Clear previous rendering error
-          const successMessage: Message = {
-            role: "assistant",
-            content: "✅ Diagram successfully auto-corrected and rendered!",
-          }
-          setMessages((prev) => [...prev, successMessage])
-          await generateSummaryAndSuggestions(result.code)
-        } else {
-          throw new Error(result.error || "Failed to auto-correct the diagram.")
-        }
-      } catch (refinementError: any) {
-        console.error("Auto-correction error:", refinementError)
-        const finalErrorMsg = `Auto-correction failed: ${refinementError.message}. Original error: ${errorMessage}`
-        setError(finalErrorMsg)
-        const failureMessage: Message = {
-          role: "assistant",
-          content: `❌ Auto-correction failed. Please review the error or try rephrasing your request. Error: ${refinementError.message}`,
-        }
-        setMessages((prev) => [...prev, failureMessage])
-      } finally {
-        setIsLoading(false)
-        setIsRefiningAttempt(false)
-      }
-    },
-    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
-  )
-
-  // Modify the existing handleRetry function to clear refinement state if user manually retries
   const handleRetry = useCallback(() => {
-    setIsRefiningAttempt(false) // Clear refinement state on manual retry
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
-    if (lastUserMessage) {
-      // Set draft message and call handleSubmit to trigger a fresh attempt
-      setDraftMessage(lastUserMessage.content)
-      // handleSubmit will be called after draftMessage state updates, or call it directly if preferred
-      // For direct call:
-      // handleSubmit(lastUserMessage.content); // Assuming handleSubmit can take content directly
-    } else if (draftMessage) {
-      handleSubmit() // Or retry with current draft if no history
+    if (draftMessage) {
+      handleSubmit()
+    } else if (messages.length > 0) {
+      // Retry the last message
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
+      if (lastUserMessage) {
+        setDraftMessage(lastUserMessage.content)
+        setTimeout(() => {
+          handleSubmit()
+        }, 100)
+      }
     }
-  }, [messages, draftMessage, handleSubmit])
+  }, [draftMessage, messages, handleSubmit])
 
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
@@ -618,13 +528,7 @@ Please analyze my original request and the faulty code, then provide a corrected
                 className={`w-2 h-2 rounded-full ${isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"}`}
               ></span>
               <span>
-                {isLoading
-                  ? isRefiningAttempt
-                    ? "Auto-correcting..."
-                    : isRetrying
-                      ? `Retrying... (${retryAttempts + 1}/3)`
-                      : "Generating..."
-                  : "Ready"}
+                {isLoading ? (isRetrying ? `Retrying... (${retryAttempts + 1}/3)` : "Generating...") : "Ready"}
               </span>
             </div>
           </div>
@@ -835,7 +739,6 @@ Please analyze my original request and the faulty code, then provide a corrected
                 isFullscreen={isFullscreen}
                 onFullscreenChange={setIsFullscreen}
                 isStandalone={!chatVisible}
-                onRenderError={handleRenderError}
               />
             ) : (
               <div className="h-full flex items-center justify-center">
