@@ -792,10 +792,10 @@ export default function Home() {
                   <div className="flex items-center gap-1 bg-white/80 rounded-lg border border-gray-200 px-1 py-1">
                     <button
                       className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                      onClick={toggleChatVisibility}
-                      title={chatVisible ? "Hide Chat" : "Show Chat"}
+                      onClick={() => setIsFullscreen(!isFullscreen)}
+                      title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
                     >
-                      {chatVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                     </button>
                     <button
                       className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 hover:bg-gray-50 transition-colors"
