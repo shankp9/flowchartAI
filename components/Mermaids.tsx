@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
-import { Copy, Palette, AlertCircle, Code, CheckCircle } from "lucide-react"
+import { Copy, Palette, AlertCircle, Code, CheckCircle, RefreshCw } from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
 
@@ -24,6 +24,7 @@ export function Mermaid({ chart }: MermaidProps) {
   const [showCode, setShowCode] = useState(false)
   const [sanitizedCode, setSanitizedCode] = useState("")
   const [wasFixed, setWasFixed] = useState(false)
+  const [wasConverted, setWasConverted] = useState(false)
 
   // Initialize client-side state
   useEffect(() => {
@@ -106,6 +107,7 @@ export function Mermaid({ chart }: MermaidProps) {
         setIsRendering(true)
         setError("")
         setWasFixed(false)
+        setWasConverted(false)
 
         // Clear previous content safely
         while (container.firstChild) {
@@ -114,13 +116,19 @@ export function Mermaid({ chart }: MermaidProps) {
 
         container.removeAttribute("data-processed")
 
+        // Check if this is old flowchart syntax
+        const isOldSyntax =
+          chartCode.includes("=>") &&
+          (chartCode.includes("start:") || chartCode.includes("operation:") || chartCode.includes("condition:"))
+
         // Sanitize and fix common syntax errors
         const cleanedCode = sanitizeMermaidCode(chartCode)
         setSanitizedCode(cleanedCode)
 
         // Check if the code was modified during sanitization
         const codeWasFixed = cleanedCode !== chartCode.trim()
-        setWasFixed(codeWasFixed)
+        setWasFixed(codeWasFixed && !isOldSyntax)
+        setWasConverted(isOldSyntax)
 
         if (!cleanedCode) {
           throw new Error("Empty diagram code")
@@ -166,25 +174,29 @@ export function Mermaid({ chart }: MermaidProps) {
 
         container.appendChild(wrapper)
 
-        // Show success message if code was fixed
-        if (codeWasFixed) {
+        // Show success message if code was fixed or converted
+        if (codeWasFixed || isOldSyntax) {
           const successDiv = document.createElement("div")
-          successDiv.className =
-            "absolute top-4 left-4 bg-green-50 border border-green-200 rounded-md p-2 flex items-center gap-2 text-green-700 text-xs z-10"
+          const messageText = isOldSyntax ? "Converted from old flowchart syntax" : "Syntax automatically fixed"
+          const bgColor = isOldSyntax
+            ? "bg-blue-50 border-blue-200 text-blue-700"
+            : "bg-green-50 border-green-200 text-green-700"
+
+          successDiv.className = `absolute top-4 left-4 ${bgColor} border rounded-md p-2 flex items-center gap-2 text-xs z-10`
           successDiv.innerHTML = `
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
             </svg>
-            <span>Syntax automatically fixed</span>
+            <span>${messageText}</span>
           `
           container.appendChild(successDiv)
 
-          // Auto-hide the success message after 3 seconds
+          // Auto-hide the success message after 4 seconds
           setTimeout(() => {
             if (successDiv.parentNode) {
               successDiv.parentNode.removeChild(successDiv)
             }
-          }, 3000)
+          }, 4000)
         }
       } catch (error) {
         console.error("Mermaid rendering error:", error)
@@ -277,13 +289,23 @@ export function Mermaid({ chart }: MermaidProps) {
         </button>
         <button
           className={`flex items-center gap-1 px-2 py-1 text-xs border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors ${
-            wasFixed ? "border-green-300 text-green-700" : "border-gray-300"
+            wasFixed
+              ? "border-green-300 text-green-700"
+              : wasConverted
+                ? "border-blue-300 text-blue-700"
+                : "border-gray-300"
           }`}
           onClick={() => setShowCode(!showCode)}
           title={showCode ? "Hide code" : "Show code"}
         >
-          {wasFixed ? <CheckCircle className="h-3 w-3" /> : <Code className="h-3 w-3" />}
-          {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : "Show Code"}
+          {wasFixed ? (
+            <CheckCircle className="h-3 w-3" />
+          ) : wasConverted ? (
+            <RefreshCw className="h-3 w-3" />
+          ) : (
+            <Code className="h-3 w-3" />
+          )}
+          {showCode ? "Hide Code" : wasFixed ? "Fixed Code" : wasConverted ? "Converted" : "Show Code"}
         </button>
       </div>
 
@@ -295,6 +317,9 @@ export function Mermaid({ chart }: MermaidProps) {
               <h3 className="text-sm font-medium">Mermaid Diagram Code</h3>
               {wasFixed && (
                 <span className="px-2 py-1 bg-green-800 text-green-100 rounded text-xs">Automatically Fixed</span>
+              )}
+              {wasConverted && (
+                <span className="px-2 py-1 bg-blue-800 text-blue-100 rounded text-xs">Converted from Old Syntax</span>
               )}
             </div>
             <div className="flex gap-2">
@@ -314,11 +339,26 @@ export function Mermaid({ chart }: MermaidProps) {
             </div>
           </div>
 
-          {wasFixed && (
-            <div className="mb-4 p-3 bg-green-900 border border-green-700 rounded-md">
-              <div className="text-green-100 text-xs font-medium mb-2">Syntax Issues Fixed:</div>
-              <div className="text-green-200 text-xs">
-                • Added missing participant to sequence diagram arrow • Ensured proper Mermaid syntax compliance
+          {(wasFixed || wasConverted) && (
+            <div
+              className={`mb-4 p-3 border rounded-md ${wasConverted ? "bg-blue-900 border-blue-700" : "bg-green-900 border-green-700"}`}
+            >
+              <div className={`text-xs font-medium mb-2 ${wasConverted ? "text-blue-100" : "text-green-100"}`}>
+                {wasConverted ? "Old Flowchart Syntax Converted:" : "Syntax Issues Fixed:"}
+              </div>
+              <div className={`text-xs ${wasConverted ? "text-blue-200" : "text-green-200"}`}>
+                {wasConverted ? (
+                  <>
+                    • Converted old flowchart.js syntax to Mermaid format
+                    <br />• Transformed node definitions (start, operation, condition, end)
+                    <br />• Fixed connection syntax and arrow formats
+                  </>
+                ) : (
+                  <>
+                    • Fixed missing connections and syntax errors
+                    <br />• Ensured proper Mermaid syntax compliance
+                  </>
+                )}
               </div>
             </div>
           )}

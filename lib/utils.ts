@@ -15,6 +15,86 @@ export function serializeCode(code: string): string {
   }
 }
 
+// Function to convert old flowchart syntax to Mermaid syntax
+function convertOldFlowchartSyntax(code: string): string {
+  const lines = code
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const nodes: { [key: string]: { type: string; text: string } } = {}
+  const connections: string[] = []
+
+  // Parse node definitions
+  for (const line of lines) {
+    // Match old syntax: st=>start: Start
+    const nodeMatch = line.match(/^(\w+)=>(start|end|operation|condition|inputoutput|subroutine):\s*(.+)$/)
+    if (nodeMatch) {
+      const [, id, type, text] = nodeMatch
+      nodes[id] = { type, text }
+      continue
+    }
+
+    // Match connections: st->op1->cond1
+    const connectionMatch = line.match(/^(\w+)(?:$$(\w+)$$)?->(.+)$/)
+    if (connectionMatch) {
+      const [, fromNode, condition, rest] = connectionMatch
+
+      // Parse the rest of the connection chain
+      const targets = rest.split("->")
+      let currentNode = fromNode
+
+      for (const target of targets) {
+        const targetNode = target.trim()
+        if (targetNode && nodes[targetNode]) {
+          if (condition) {
+            connections.push(`${currentNode} -->|${condition}| ${targetNode}`)
+          } else {
+            connections.push(`${currentNode} --> ${targetNode}`)
+          }
+          currentNode = targetNode
+        }
+      }
+    }
+  }
+
+  // Generate Mermaid flowchart
+  const mermaidLines = ["graph TD"]
+
+  // Add node definitions with proper Mermaid syntax
+  for (const [id, node] of Object.entries(nodes)) {
+    let nodeShape = ""
+    switch (node.type) {
+      case "start":
+      case "end":
+        nodeShape = `${id}((${node.text}))`
+        break
+      case "operation":
+        nodeShape = `${id}[${node.text}]`
+        break
+      case "condition":
+        nodeShape = `${id}{${node.text}}`
+        break
+      case "inputoutput":
+        nodeShape = `${id}[/${node.text}/]`
+        break
+      case "subroutine":
+        nodeShape = `${id}[[${node.text}]]`
+        break
+      default:
+        nodeShape = `${id}[${node.text}]`
+    }
+    mermaidLines.push(`    ${nodeShape}`)
+  }
+
+  // Add connections
+  for (const connection of connections) {
+    mermaidLines.push(`    ${connection}`)
+  }
+
+  return mermaidLines.join("\n")
+}
+
 // Function to sanitize and fix common Mermaid syntax errors
 export function sanitizeMermaidCode(code: string): string {
   if (!code) return ""
@@ -24,6 +104,14 @@ export function sanitizeMermaidCode(code: string): string {
 
   // Remove markdown code block markers if present
   sanitized = sanitized.replace(/^```mermaid\s*/i, "").replace(/```\s*$/i, "")
+
+  // Check if this is old flowchart syntax and convert it
+  if (
+    sanitized.includes("=>") &&
+    (sanitized.includes("start:") || sanitized.includes("operation:") || sanitized.includes("condition:"))
+  ) {
+    return convertOldFlowchartSyntax(sanitized)
+  }
 
   // Fix sequence diagram syntax errors
   if (sanitized.startsWith("sequenceDiagram")) {
@@ -185,6 +273,7 @@ export function sanitizeMermaidCode(code: string): string {
   else if (sanitized.startsWith("graph") || sanitized.startsWith("flowchart")) {
     const lines = sanitized.split("\n")
     const processedLines = []
+    const nodeConnections = new Map<string, string[]>()
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
@@ -199,44 +288,40 @@ export function sanitizeMermaidCode(code: string): string {
       }
 
       // Check if this line defines a node without connections
-      const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/
+      const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\]|$$\(.+$$\))$/
       const nodeMatch = line.match(nodeDefRegex)
 
-      // If it's just a node definition without connections, connect it to previous node
-      if (nodeMatch && i > 1) {
-        // Look for previous node to connect to
-        let prevNodeId = null
-        for (let j = processedLines.length - 1; j >= 0; j--) {
-          const prevLine = processedLines[j]
-          const prevNodeMatch = prevLine.match(
-            /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/,
-          )
-          if (prevNodeMatch) {
-            prevNodeId = prevNodeMatch[1]
-            break
-          }
-          // Also check for connections that end with a node
-          const connectionMatch = prevLine.match(/-->\s*([A-Za-z0-9_-]+)/)
-          if (connectionMatch) {
-            prevNodeId = connectionMatch[1]
-            break
-          }
-        }
+      if (nodeMatch) {
+        const nodeId = nodeMatch[1]
+        processedLines.push(line)
 
-        // If we found a previous node, connect this node to it
-        if (prevNodeId) {
-          processedLines.push(`${prevNodeId} --> ${nodeMatch[1]}${nodeMatch[2]}`)
-        } else {
-          processedLines.push(line)
+        // Track this node for potential connections
+        if (!nodeConnections.has(nodeId)) {
+          nodeConnections.set(nodeId, [])
         }
       }
-      // Check if this line is missing arrow syntax
+      // Check for connection lines
+      else if (line.includes("-->") || line.includes("---") || line.includes("==>")) {
+        processedLines.push(line)
+
+        // Extract node connections for tracking
+        const connectionMatch = line.match(/([A-Za-z0-9_-]+)\s*-->\s*([A-Za-z0-9_-]+)/)
+        if (connectionMatch) {
+          const [, from, to] = connectionMatch
+          if (!nodeConnections.has(from)) nodeConnections.set(from, [])
+          if (!nodeConnections.has(to)) nodeConnections.set(to, [])
+          nodeConnections.get(from)?.push(to)
+        }
+      }
+      // Check if this line is missing arrow syntax but has multiple nodes
       else if (line.includes("[") && !line.includes("-->") && !line.includes("---") && !line.includes("==>")) {
         // Try to extract node IDs and create a connection
         const parts = line.split(/\s+/)
         if (parts.length >= 2) {
           const firstNodeId = parts[0]
-          const secondNodeId = parts[1].split("[")[0]
+          const secondPart = parts[1]
+          const secondNodeId = secondPart.split("[")[0]
+
           if (firstNodeId && secondNodeId && firstNodeId !== secondNodeId) {
             processedLines.push(`${firstNodeId} --> ${parts.slice(1).join(" ")}`)
           } else {
@@ -247,6 +332,24 @@ export function sanitizeMermaidCode(code: string): string {
         }
       } else {
         processedLines.push(line)
+      }
+    }
+
+    // Check for orphaned nodes and try to connect them
+    const connectedNodes = new Set<string>()
+    for (const [node, connections] of nodeConnections) {
+      if (connections.length > 0) {
+        connectedNodes.add(node)
+        connections.forEach((conn) => connectedNodes.add(conn))
+      }
+    }
+
+    // Find orphaned nodes and connect them to the flow
+    const orphanedNodes = Array.from(nodeConnections.keys()).filter((node) => !connectedNodes.has(node))
+    if (orphanedNodes.length > 0 && connectedNodes.size > 0) {
+      const lastConnectedNode = Array.from(connectedNodes)[connectedNodes.size - 1]
+      for (const orphan of orphanedNodes) {
+        processedLines.push(`${lastConnectedNode} --> ${orphan}`)
       }
     }
 
@@ -329,7 +432,12 @@ export function parseCodeFromMessage(message: string): string {
   const firstLine = trimmed.split("\n")[0].toLowerCase()
   const isValidMermaid = validMermaidStarters.some((starter) => firstLine.startsWith(starter.toLowerCase()))
 
-  if (isValidMermaid) {
+  // Also check for old flowchart syntax
+  const isOldFlowchart =
+    trimmed.includes("=>") &&
+    (trimmed.includes("start:") || trimmed.includes("operation:") || trimmed.includes("condition:"))
+
+  if (isValidMermaid || isOldFlowchart) {
     return sanitizeMermaidCode(trimmed)
   }
 
