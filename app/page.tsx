@@ -77,7 +77,7 @@ export default function Home() {
   // Enhanced retry state
   const [retryAttempts, setRetryAttempts] = useState(0)
   const [retryHistory, setRetryHistory] = useState<string[]>([])
-  const [isRetrying, setIsRetrying] = useState(isRetrying)
+  const [isRetrying, setIsRetrying] = useState(false)
 
   // Ref for auto-scrolling chat messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
