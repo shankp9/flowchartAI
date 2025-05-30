@@ -27,23 +27,24 @@ export const ChatInput: React.FC<Props> = ({ messageCotent, onChange, onSubmit, 
   return (
     <div className="relative">
       <Textarea
-        placeholder="Describe your diagram in natural language... (e.g., 'Create a flowchart for user login process')"
+        placeholder="Describe your diagram... (e.g., 'Create a user login flowchart')"
         value={messageCotent}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={isLoading}
-        className="min-h-[80px] pr-12 resize-none border-2 focus:border-primary transition-colors"
+        className="min-h-[60px] pr-12 resize-none border focus:border-primary transition-colors"
+        maxLength={2000}
       />
       <Button
         onClick={onSubmit}
         disabled={isLoading || !messageCotent.trim()}
         size="sm"
-        className="absolute bottom-2 right-2 h-8 w-8 p-0"
+        className="absolute bottom-2 right-2 h-7 w-7 p-0"
       >
-        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
       </Button>
-      <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
-        <span>Press Enter to send, Shift+Enter for new line</span>
+      <div className="flex justify-between items-center mt-1 text-xs text-muted-foreground">
+        <span>Press Enter to send</span>
         <span>{messageCotent.length}/2000</span>
       </div>
     </div>

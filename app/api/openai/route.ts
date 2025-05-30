@@ -16,10 +16,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Messages array is required" }, { status: 400 })
     }
 
-    const systemMessage = {
-      role: "system",
-      content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
-      
+    // Check if this is a summary request
+    const isSummaryRequest = messages.some(
+      (msg: any) => msg.role === "system" && msg.content.includes("diagram analyst"),
+    )
+
+    let systemMessage
+    if (isSummaryRequest) {
+      systemMessage = {
+        role: "system",
+        content: `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
+        1) A brief summary of what the diagram shows (max 50 words)
+        2) Three specific, actionable suggestions for improving or expanding the diagram
+        
+        Respond ONLY with valid JSON in this exact format:
+        {
+          "summary": "Brief description of the diagram",
+          "suggestions": [
+            "First specific suggestion",
+            "Second specific suggestion", 
+            "Third specific suggestion"
+          ]
+        }`,
+      }
+    } else {
+      systemMessage = {
+        role: "system",
+        content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+        
 Available diagram types:
 - Flowchart: graph TD or graph LR
 - Sequence diagram: sequenceDiagram
@@ -29,6 +53,7 @@ Available diagram types:
 - C4 diagram: C4Context, C4Container, C4Component
 
 Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+      }
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -40,9 +65,9 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
       body: JSON.stringify({
         model,
         messages: [systemMessage, ...messages],
-        stream: true,
+        stream: !isSummaryRequest, // Don't stream for summary requests
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
 
@@ -60,7 +85,18 @@ Always respond with valid Mermaid syntax wrapped in a code block. Do not include
       return NextResponse.json({ error: `OpenAI API error: ${response.status}` }, { status: response.status })
     }
 
-    // Create a readable stream for the response
+    // Handle non-streaming response for summary requests
+    if (isSummaryRequest) {
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content || ""
+      return new Response(content, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      })
+    }
+
+    // Handle streaming response for diagram generation
     const encoder = new TextEncoder()
     const decoder = new TextDecoder()
 
