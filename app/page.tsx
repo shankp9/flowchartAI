@@ -9,6 +9,7 @@ import {
   Lightbulb,
   Sparkles,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 
 import { Mermaid } from "@/components/Mermaids"
@@ -18,7 +19,36 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import type { Message } from "@/types/type"
-import { parseCodeFromMessage } from "@/lib/utils"
+import { parseCodeFromMessage, sanitizeMermaidCode } from "@/lib/utils"
+
+// Example diagrams for different types
+const EXAMPLE_DIAGRAMS = {
+  flowchart: `graph TD
+    A[Start] --> B[Process]
+    B --> C{Decision}
+    C -->|Yes| D[Action 1]
+    C -->|No| E[Action 2]
+    D --> F[End]
+    E --> F`,
+  sequence: `sequenceDiagram
+    participant User
+    participant System
+    participant Database
+    
+    User->>System: Request data
+    System->>Database: Query data
+    Database-->>System: Return results
+    System-->>User: Display results`,
+  journey: `journey
+    title User Journey
+    section Login
+      Enter credentials: 3: User
+      Validate: 2: System
+      Success: 5: User
+    section Dashboard
+      View data: 4: User
+      Interact: 3: User`,
+}
 
 export default function Home() {
   const [draftMessage, setDraftMessage] = useState<string>("")
@@ -32,6 +62,7 @@ export default function Home() {
   const [diagramSummary, setDiagramSummary] = useState<string>("")
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [error, setError] = useState<string>("")
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     setIsClient(true)
@@ -107,6 +138,22 @@ export default function Home() {
     setDraftOutputCode("")
     setIsLoading(true)
     setError("")
+    setRetryCount(0)
+
+    // Determine if the user is asking for a specific diagram type
+    const diagramType = detectDiagramType(draftMessage)
+    let promptContent = draftMessage
+
+    // Add specific instructions based on diagram type
+    if (diagramType) {
+      promptContent = `Create a ${diagramType} diagram for: ${draftMessage}. Use proper Mermaid syntax for ${diagramType} diagrams.`
+    }
+
+    // Create the message with enhanced prompt
+    const enhancedMessage: Message = {
+      role: "user",
+      content: promptContent,
+    }
 
     try {
       const response = await fetch("/api/openai", {
@@ -115,7 +162,7 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: newMessages,
+          messages: [...messages, enhancedMessage],
           model: "gpt-3.5-turbo",
         }),
       })
@@ -143,22 +190,45 @@ export default function Home() {
         setDraftOutputCode((prevCode) => prevCode + chunkValue)
       }
 
-      const finalCode = parseCodeFromMessage(code)
+      // Parse and sanitize the code
+      const parsedCode = parseCodeFromMessage(code)
+      const sanitizedCode = sanitizeMermaidCode(parsedCode)
 
-      // Validate the code before setting it
-      if (finalCode && !finalCode.includes("Error: Invalid Response")) {
-        setOutputCode(finalCode)
-        await generateSummaryAndSuggestions(finalCode)
+      if (sanitizedCode && !sanitizedCode.includes("Error: Invalid Response")) {
+        setOutputCode(sanitizedCode)
+        await generateSummaryAndSuggestions(sanitizedCode)
       } else {
-        // If we got an invalid response, try again with a more specific prompt
+        throw new Error("Invalid diagram syntax received")
+      }
+    } catch (error) {
+      console.error("Request error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
+
+      // If this is the first attempt, try again with more specific instructions
+      if (retryCount === 0) {
+        setRetryCount(1)
+
+        // Determine the best diagram type if not already specified
+        const fallbackType = diagramType || "flowchart"
+
+        // Create a more specific prompt with an example
         const retryMessage: Message = {
           role: "user",
-          content: `Please create a simple flowchart diagram for: ${draftMessage}. Start with "graph TD" and include at least 3 connected nodes.`,
+          content: `Create a ${fallbackType} diagram for: ${draftMessage}. 
+          
+Here's an example of valid ${fallbackType} syntax:
+${EXAMPLE_DIAGRAMS[fallbackType as keyof typeof EXAMPLE_DIAGRAMS] || EXAMPLE_DIAGRAMS.flowchart}
+
+Please follow this exact syntax pattern but create a diagram for my request.`,
         }
 
+        // Add the retry message to the conversation
         const retryMessages = [...newMessages, retryMessage]
 
         try {
+          setIsLoading(true)
+          setError("Retrying with more specific instructions...")
+
           const retryResponse = await fetch("/api/openai", {
             method: "POST",
             headers: {
@@ -185,10 +255,13 @@ export default function Home() {
                 retryCode += retryChunkValue
               }
 
-              const retryFinalCode = parseCodeFromMessage(retryCode)
-              if (retryFinalCode && !retryFinalCode.includes("Error: Invalid Response")) {
-                setOutputCode(retryFinalCode)
-                await generateSummaryAndSuggestions(retryFinalCode)
+              const retryParsedCode = parseCodeFromMessage(retryCode)
+              const retrySanitizedCode = sanitizeMermaidCode(retryParsedCode)
+
+              if (retrySanitizedCode && !retrySanitizedCode.includes("Error: Invalid Response")) {
+                setOutputCode(retrySanitizedCode)
+                await generateSummaryAndSuggestions(retrySanitizedCode)
+                setError("")
               } else {
                 setError("Unable to generate a valid diagram. Please try a more specific request.")
               }
@@ -199,13 +272,50 @@ export default function Home() {
           setError("Unable to generate diagram. Please try again with a more specific request.")
         }
       }
-    } catch (error) {
-      console.error("Request error:", error)
-      setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsLoading(false)
     }
-  }, [draftMessage, messages, generateSummaryAndSuggestions])
+  }, [draftMessage, messages, generateSummaryAndSuggestions, retryCount])
+
+  // Function to detect the diagram type from user input
+  const detectDiagramType = (input: string): string | null => {
+    const lowercaseInput = input.toLowerCase()
+
+    if (lowercaseInput.includes("flow") || lowercaseInput.includes("process")) {
+      return "flowchart"
+    }
+    if (
+      lowercaseInput.includes("sequence") ||
+      lowercaseInput.includes("interaction") ||
+      lowercaseInput.includes("api")
+    ) {
+      return "sequence"
+    }
+    if (lowercaseInput.includes("class") || lowercaseInput.includes("object")) {
+      return "class"
+    }
+    if (lowercaseInput.includes("journey") || lowercaseInput.includes("user experience")) {
+      return "journey"
+    }
+    if (
+      lowercaseInput.includes("gantt") ||
+      lowercaseInput.includes("timeline") ||
+      lowercaseInput.includes("schedule")
+    ) {
+      return "gantt"
+    }
+    if (lowercaseInput.includes("state") || lowercaseInput.includes("status")) {
+      return "state"
+    }
+    if (lowercaseInput.includes("er") || lowercaseInput.includes("entity") || lowercaseInput.includes("database")) {
+      return "er"
+    }
+    if (lowercaseInput.includes("pie") || lowercaseInput.includes("chart") || lowercaseInput.includes("distribution")) {
+      return "pie"
+    }
+
+    return null
+  }
 
   const handleSuggestionClick = useCallback(
     async (suggestion: string) => {
@@ -258,11 +368,12 @@ export default function Home() {
           setDraftOutputCode((prevCode) => prevCode + chunkValue)
         }
 
-        const finalCode = parseCodeFromMessage(code)
-        setOutputCode(finalCode)
+        const parsedCode = parseCodeFromMessage(code)
+        const sanitizedCode = sanitizeMermaidCode(parsedCode)
 
-        if (finalCode) {
-          await generateSummaryAndSuggestions(finalCode)
+        if (sanitizedCode) {
+          setOutputCode(sanitizedCode)
+          await generateSummaryAndSuggestions(sanitizedCode)
         }
       } catch (error) {
         console.error("Request error:", error)
@@ -273,6 +384,21 @@ export default function Home() {
     },
     [messages, generateSummaryAndSuggestions],
   )
+
+  const handleRetry = useCallback(() => {
+    if (draftMessage) {
+      handleSubmit()
+    } else if (messages.length > 0) {
+      // Retry the last message
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")
+      if (lastUserMessage) {
+        setDraftMessage(lastUserMessage.content)
+        setTimeout(() => {
+          handleSubmit()
+        }, 100)
+      }
+    }
+  }, [draftMessage, messages, handleSubmit])
 
   if (!isClient) {
     return (
@@ -354,7 +480,7 @@ export default function Home() {
               ) : (
                 <div className="space-y-4 p-4">
                   {messages.map((message, index) => (
-                    <ChatMessage key={`${message.content}-${index}`} message={message.content} />
+                    <ChatMessage key={`${message.content}-${index}`} message={message.content} role={message.role} />
                   ))}
                   {isLoading && (
                     <div className="flex items-center gap-2 text-gray-600 p-4">
@@ -365,7 +491,22 @@ export default function Home() {
                   {error && (
                     <div className="flex items-center gap-2 text-red-600 p-4 bg-red-50 rounded-lg">
                       <AlertCircle className="h-4 w-4" />
-                      <span className="text-sm">{error}</span>
+                      <div className="flex-1">
+                        <span className="text-sm">{error}</span>
+                        {retryCount > 0 && (
+                          <div className="mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRetry}
+                              className="text-xs flex items-center gap-1"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Try Again with Different Format
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -42,29 +42,43 @@ export async function POST(req: NextRequest) {
     } else {
       systemMessage = {
         role: "system",
-        content: `You are an expert Mermaid diagram generator. You MUST respond with ONLY valid Mermaid syntax code, nothing else.
+        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
 
 CRITICAL RULES:
 1. NEVER include explanatory text before or after the diagram code
 2. ALWAYS start your response directly with the diagram type keyword
-3. ALWAYS wrap the entire response in a code block with 'mermaid' language identifier
+3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
+4. NEVER place nodes without connecting them to other nodes
+5. For journey diagrams, ALWAYS use proper task format: "Task name: score: Actor"
 
-Available diagram types and their syntax:
-- Flowchart: "graph TD" or "graph LR"
-- Sequence: "sequenceDiagram"
-- Class: "classDiagram"
-- State: "stateDiagram-v2"
-- Entity Relationship: "erDiagram"
-- User Journey: "journey"
-- Gantt: "gantt"
-- Pie Chart: "pie title Chart Title"
-- Git Graph: "gitGraph"
+FLOWCHART SYNTAX EXAMPLES:
+CORRECT:
+graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
 
-Example valid responses:
-For flowchart request: "graph TD\n    A[Start] --> B[Process]\n    B --> C[End]"
-For sequence request: "sequenceDiagram\n    participant A\n    participant B\n    A->>B: Message"
+INCORRECT:
+graph TD
+    A[Start]
+    B[Process]
+    C[End]
 
-RESPOND WITH MERMAID CODE ONLY - NO EXPLANATIONS OR ADDITIONAL TEXT!`,
+JOURNEY SYNTAX EXAMPLES:
+CORRECT:
+journey
+    title My Journey
+    section Section 1
+      Task 1: 5: Me
+      Task 2: 3: Me
+
+INCORRECT:
+journey
+    title My Journey
+    section Section 1
+      Task 1
+      Task 2
+
+RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!`,
       }
     }
 
@@ -78,7 +92,7 @@ RESPOND WITH MERMAID CODE ONLY - NO EXPLANATIONS OR ADDITIONAL TEXT!`,
         model,
         messages: [systemMessage, ...messages],
         stream: !isSummaryRequest,
-        temperature: 0.3, // Lower temperature for more consistent output
+        temperature: 0.2, // Lower temperature for more consistent output
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })

@@ -2,7 +2,7 @@ import { User, Bot } from "lucide-react"
 
 interface ChatMessageProps {
   message: string
-  role?: "user" | "assistant"
+  role?: "user" | "assistant" | "system"
 }
 
 export function ChatMessage({ message, role = "user" }: ChatMessageProps) {

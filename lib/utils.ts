@@ -15,6 +15,117 @@ export function serializeCode(code: string): string {
   }
 }
 
+// Function to sanitize and fix common Mermaid syntax errors
+export function sanitizeMermaidCode(code: string): string {
+  if (!code) return ""
+
+  // Trim whitespace
+  let sanitized = code.trim()
+
+  // Remove markdown code block markers if present
+  sanitized = sanitized.replace(/^```mermaid\s*/i, "").replace(/```\s*$/i, "")
+
+  // Check if it's a flowchart and fix common syntax errors
+  if (sanitized.startsWith("graph") || sanitized.startsWith("flowchart")) {
+    // Split into lines for processing
+    const lines = sanitized.split("\n")
+    const processedLines = []
+
+    // Process each line
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Skip empty lines
+      if (!line) continue
+
+      // First line is the graph declaration
+      if (i === 0) {
+        processedLines.push(line)
+        continue
+      }
+
+      // Check if this line defines a node without connections
+      const nodeDefRegex = /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/
+      const nodeMatch = line.match(nodeDefRegex)
+
+      // If it's just a node definition without connections, skip it or connect it
+      if (nodeMatch && i > 1) {
+        // Look for previous node to connect to
+        let prevNodeId = null
+        for (let j = processedLines.length - 1; j >= 0; j--) {
+          const prevLine = processedLines[j]
+          const prevNodeMatch = prevLine.match(
+            /^([A-Za-z0-9_-]+)(\[.+\]|$$.+$$|{.+}|>(.+)<|{{.+}}|\[$$.+$$\]|\[\/(.+)\/\])$/,
+          )
+          if (prevNodeMatch) {
+            prevNodeId = prevNodeMatch[1]
+            break
+          }
+        }
+
+        // If we found a previous node, connect this node to it
+        if (prevNodeId) {
+          processedLines.push(`${prevNodeId} --> ${nodeMatch[1]}`)
+          processedLines.push(line)
+        } else {
+          processedLines.push(line)
+        }
+      }
+      // Check if this line is missing arrow syntax
+      else if (line.includes("[") && !line.includes("-->") && !line.includes("---") && !line.includes("==>")) {
+        // Try to extract node IDs and create a connection
+        const parts = line.split(/\s+/)
+        if (parts.length >= 2) {
+          const firstNodeId = parts[0]
+          const secondNodeId = parts[1].split("[")[0]
+          if (firstNodeId && secondNodeId) {
+            processedLines.push(`${firstNodeId} --> ${parts.slice(1).join(" ")}`)
+          } else {
+            processedLines.push(line)
+          }
+        } else {
+          processedLines.push(line)
+        }
+      } else {
+        processedLines.push(line)
+      }
+    }
+
+    sanitized = processedLines.join("\n")
+  }
+
+  // Fix journey diagram syntax
+  if (sanitized.startsWith("journey")) {
+    const lines = sanitized.split("\n")
+    const processedLines = []
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Skip empty lines
+      if (!line) continue
+
+      // First line is the journey declaration
+      if (i === 0 || line.startsWith("journey") || line.startsWith("title") || line.startsWith("section")) {
+        processedLines.push(line)
+        continue
+      }
+
+      // Check if this line is a task without proper format
+      if (!line.includes(":")) {
+        // Try to convert it to proper task format
+        processedLines.push(`  ${line}: 3: Me`)
+      } else {
+        processedLines.push(line)
+      }
+    }
+
+    sanitized = processedLines.join("\n")
+  }
+
+  return sanitized
+}
+
 export function parseCodeFromMessage(message: string): string {
   // Remove any leading/trailing whitespace
   const trimmed = message.trim()
@@ -24,7 +135,7 @@ export function parseCodeFromMessage(message: string): string {
   const codeMatch = codeBlockRegex.exec(trimmed)
 
   if (codeMatch && codeMatch[1]) {
-    return codeMatch[1].trim()
+    return sanitizeMermaidCode(codeMatch[1].trim())
   }
 
   // If no code block found, check if the entire message is valid Mermaid syntax
@@ -48,7 +159,7 @@ export function parseCodeFromMessage(message: string): string {
   const isValidMermaid = validMermaidStarters.some((starter) => firstLine.startsWith(starter.toLowerCase()))
 
   if (isValidMermaid) {
-    return trimmed
+    return sanitizeMermaidCode(trimmed)
   }
 
   // If we get here, the response doesn't contain valid Mermaid code
