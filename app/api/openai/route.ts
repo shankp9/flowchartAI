@@ -34,18 +34,18 @@ export async function POST(req: NextRequest) {
       systemMessage = {
         role: "system",
         content: `You are an expert diagram analyst. Analyze the given Mermaid diagram and provide: 
-    1) A brief summary of what the diagram shows (max 50 words)
-    2) Three specific, actionable suggestions for improving or expanding the diagram
-    
-    Respond ONLY with valid JSON in this exact format:
-    {
-      "summary": "Brief description of the diagram",
-      "suggestions": [
-        "First specific suggestion",
-        "Second specific suggestion", 
-        "Third specific suggestion"
-      ]
-    }`,
+1) A brief summary of what the diagram shows (max 50 words)
+2) Three specific, actionable suggestions for improving or expanding the diagram
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "summary": "Brief description of the diagram",
+  "suggestions": [
+    "First specific suggestion",
+    "Second specific suggestion", 
+    "Third specific suggestion"
+  ]
+}`,
       }
     } else {
       // Enhanced system message with retry-specific instructions
@@ -63,6 +63,7 @@ CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
 - Ensure all arrows and connections are properly formatted
 - Double-check every line for syntax correctness
 - NO explanatory text, ONLY valid Mermaid code
+- NEVER include words like "error", "syntax", "mermaid version", or "parse"
 
 RETRY FOCUS:
 ${retryAttempt === 1 ? "- Simplify syntax and use basic examples" : ""}
@@ -102,10 +103,11 @@ CRITICAL RULES:
 3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
 4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
 5. NEVER start a line with just an arrow (-->> or ->>)
-6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
+6. NEVER use words like "ERROR", "IDENTIFYING", "syntax error", "mermaid version", or other invalid keywords
 7. ALWAYS use proper Mermaid syntax for each diagram type
 8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
+9. Ensure all syntax follows official Mermaid documentation
+10. NEVER include any error messages or debugging information${retryInstructions}${contextInstructions}
 
 SEQUENCE DIAGRAM SYNTAX RULES:
 - CORRECT: "ParticipantA ->> ParticipantB: Message"

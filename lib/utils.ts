@@ -129,7 +129,7 @@ function validateERDiagram(lines: string[], errors: string[]) {
 
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
-    return ""
+    return createBasicFallbackDiagram()
   }
 
   let cleanedCode = code.trim()
@@ -176,30 +176,31 @@ export function sanitizeMermaidCode(code: string): string {
 
   // Check if this is old flowchart syntax and convert it
   if (isOldFlowchartSyntax(cleanedCode)) {
-    cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
+    try {
+      cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
+    } catch (e) {
+      console.warn("Failed to convert old syntax:", e)
+      return createBasicFallbackDiagram()
+    }
   }
 
   // Enhanced syntax cleaning and validation
   cleanedCode = cleanInvalidSyntax(cleanedCode)
 
-  // Fix common sequence diagram issues
-  if (cleanedCode.toLowerCase().includes("sequencediagram")) {
-    cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
-  }
-
-  // Fix common flowchart issues
-  if (cleanedCode.toLowerCase().includes("graph") || cleanedCode.toLowerCase().includes("flowchart")) {
-    cleanedCode = fixFlowchartSyntax(cleanedCode)
-  }
-
-  // Fix ER diagram issues
-  if (cleanedCode.toLowerCase().includes("erdiagram")) {
-    cleanedCode = fixERDiagramSyntax(cleanedCode)
-  }
-
-  // Fix class diagram issues
-  if (cleanedCode.toLowerCase().includes("classdiagram")) {
-    cleanedCode = fixClassDiagramSyntax(cleanedCode)
+  // Apply diagram-specific fixes
+  try {
+    if (cleanedCode.toLowerCase().includes("sequencediagram")) {
+      cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
+    } else if (cleanedCode.toLowerCase().includes("graph") || cleanedCode.toLowerCase().includes("flowchart")) {
+      cleanedCode = fixFlowchartSyntax(cleanedCode)
+    } else if (cleanedCode.toLowerCase().includes("erdiagram")) {
+      cleanedCode = fixERDiagramSyntax(cleanedCode)
+    } else if (cleanedCode.toLowerCase().includes("classdiagram")) {
+      cleanedCode = fixClassDiagramSyntax(cleanedCode)
+    }
+  } catch (e) {
+    console.warn("Failed to apply diagram-specific fixes:", e)
+    return createBasicFallbackDiagram()
   }
 
   // Remove empty lines and normalize whitespace
@@ -210,25 +211,97 @@ export function sanitizeMermaidCode(code: string): string {
     .join("\n")
 
   // Final validation - if still invalid, return a simple fallback
-  if (!cleanedCode || cleanedCode.length < 5) {
-    return `graph TD
-    A[Start] --> B[Process]
-    B --> C[End]`
+  if (!cleanedCode || cleanedCode.length < 5 || !isValidMermaidStart(cleanedCode)) {
+    return createBasicFallbackDiagram()
+  }
+
+  // Additional safety check for common error patterns
+  if (containsErrorPatterns(cleanedCode)) {
+    return createBasicFallbackDiagram()
   }
 
   return cleanedCode
 }
 
+function createBasicFallbackDiagram(): string {
+  return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8`
+}
+
+function isValidMermaidStart(code: string): boolean {
+  const firstLine = code.split("\n")[0].trim().toLowerCase()
+  const validStarts = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "journey",
+    "gantt",
+    "statediagram",
+    "erdiagram",
+    "pie",
+    "gitgraph",
+    "mindmap",
+    "timeline",
+    "sankey",
+    "requirement",
+    "c4context",
+    "c4container",
+    "c4component",
+    "c4dynamic",
+  ]
+  return validStarts.some((start) => firstLine.startsWith(start))
+}
+
+function containsErrorPatterns(code: string): boolean {
+  const errorPatterns = [
+    /syntax\s+error/i,
+    /mermaid\s+version/i,
+    /parse\s+error/i,
+    /unexpected\s+token/i,
+    /invalid\s+syntax/i,
+    /error\s*:\s*error/i,
+    /identifying/i,
+    /below/i,
+    /\berror\b.*\berror\b/i,
+  ]
+
+  return errorPatterns.some((pattern) => pattern.test(code))
+}
+
 function cleanInvalidSyntax(code: string): string {
   let cleaned = code
 
-  // Remove common error patterns
+  // Remove common error patterns more aggressively
   cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
   cleaned = cleaned.replace(/\bERROR\b/gi, "")
   cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
   cleaned = cleaned.replace(/\bBelo\b/gi, "")
   cleaned = cleaned.replace(/\bSyntax error\b/gi, "")
   cleaned = cleaned.replace(/\bmermaid version\b/gi, "")
+  cleaned = cleaned.replace(/\bparse error\b/gi, "")
+  cleaned = cleaned.replace(/\bunexpected token\b/gi, "")
+  cleaned = cleaned.replace(/\binvalid syntax\b/gi, "")
+
+  // Remove lines that contain only error keywords
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim().toLowerCase()
+      return !(
+        trimmed === "error" ||
+        trimmed === "syntax error" ||
+        trimmed === "parse error" ||
+        trimmed.startsWith("error:") ||
+        trimmed.includes("mermaid version") ||
+        trimmed.includes("unexpected token")
+      )
+    })
+    .join("\n")
 
   // Fix malformed entity relationships
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
@@ -245,6 +318,10 @@ function cleanInvalidSyntax(code: string): string {
   // Ensure proper line endings
   cleaned = cleaned.replace(/\r\n/g, "\n")
   cleaned = cleaned.replace(/\r/g, "\n")
+
+  // Remove any remaining problematic patterns
+  cleaned = cleaned.replace(/\b(error|ERROR)\s*[-:]\s*(error|ERROR)\b/gi, "")
+  cleaned = cleaned.replace(/\b(identifying|IDENTIFYING)\s+/gi, "")
 
   return cleaned
 }

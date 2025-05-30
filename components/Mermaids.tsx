@@ -36,6 +36,22 @@ interface MermaidProps {
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
+// Helper function to validate Mermaid code
+function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+  try {
+    // Attempt to render the code to check for errors
+    mermaid.parse(code)
+    return { isValid: true, errors: [] }
+  } catch (error: any) {
+    // If there's an error during parsing, return the error message
+    if (error instanceof Error) {
+      return { isValid: false, errors: [error.message] }
+    } else {
+      return { isValid: false, errors: ["Unknown error"] }
+    }
+  }
+}
+
 export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isStandalone = false }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
@@ -477,120 +493,89 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         setWasConverted(false)
 
         // Clear previous content safely
-        while (container.firstChild) {
-          try {
+        try {
+          while (container.firstChild) {
             container.removeChild(container.firstChild)
-          } catch (e) {
-            console.warn("Error removing child:", e)
-            container.innerHTML = ""
-            break
           }
+        } catch (e) {
+          container.innerHTML = ""
         }
 
         container.removeAttribute("data-processed")
+
+        // Pre-validate and clean the code
+        let cleanedCode = ""
+        try {
+          cleanedCode = sanitizeMermaidCode(chartCode)
+          setSanitizedCode(cleanedCode)
+        } catch (e) {
+          console.warn("Failed to sanitize code:", e)
+          cleanedCode = createEmergencyFallback()
+          setSanitizedCode(cleanedCode)
+          setWasFixed(true)
+        }
+
+        // Validate the cleaned code
+        const validation = validateMermaidCode(cleanedCode)
+        if (!validation.isValid) {
+          console.warn("Code validation failed:", validation.errors)
+          cleanedCode = createEmergencyFallback()
+          setSanitizedCode(cleanedCode)
+          setWasFixed(true)
+        }
 
         const isOldSyntax =
           chartCode.includes("=>") &&
           (chartCode.includes("start:") || chartCode.includes("operation:") || chartCode.includes("condition:"))
 
-        const cleanedCode = sanitizeMermaidCode(chartCode)
-        setSanitizedCode(cleanedCode)
-
         const codeWasFixed = cleanedCode !== chartCode.trim()
         setWasFixed(codeWasFixed && !isOldSyntax)
         setWasConverted(isOldSyntax)
 
-        if (!cleanedCode) {
-          throw new Error("Empty diagram code")
-        }
-
-        // Multiple retry attempts with progressively simpler syntax
+        // Multiple rendering attempts with progressive fallbacks
         let svg = ""
         let renderSuccess = false
         let lastError = ""
 
-        for (let attempt = 0; attempt < 3; attempt++) {
+        // Attempt 1: Try with cleaned code
+        try {
+          await initializeMermaidSafely(selectedTheme, screenSize)
+          const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          const result = await mermaid.render(id, cleanedCode)
+          svg = result.svg
+          renderSuccess = true
+        } catch (error1) {
+          lastError = error1 instanceof Error ? error1.message : "Render attempt 1 failed"
+          console.warn("First render attempt failed:", lastError)
+
+          // Attempt 2: Try with simplified version
           try {
-            // Initialize mermaid with error-resistant settings
-            mermaid.initialize({
-              startOnLoad: false,
-              securityLevel: "loose",
-              theme: selectedTheme,
-              logLevel: "error",
-              flowchart: {
-                useMaxWidth: false,
-                htmlLabels: true,
-                curve: "basis",
-                padding: screenSize === "mobile" ? 10 : 20,
-              },
-              journey: {
-                useMaxWidth: false,
-              },
-              sequence: {
-                useMaxWidth: false,
-                showSequenceNumbers: true,
-                wrap: true,
-                width: screenSize === "mobile" ? 120 : 150,
-              },
-              gantt: {
-                useMaxWidth: false,
-              },
-              er: {
-                useMaxWidth: false,
-              },
-              class: {
-                useMaxWidth: false,
-              },
-              state: {
-                useMaxWidth: false,
-              },
-              pie: {
-                useMaxWidth: false,
-              },
-            })
-
-            const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-            if (attempt === 0) {
-              // First attempt: use cleaned code as-is
-              const result = await mermaid.render(id, cleanedCode)
-              svg = result.svg
-            } else if (attempt === 1) {
-              // Second attempt: use simplified version
-              console.warn("First render failed, trying simplified syntax")
-              const simplifiedCode = createSimplifiedDiagram(cleanedCode)
-              const result = await mermaid.render(id + "_simplified", simplifiedCode)
-              svg = result.svg
-              setWasFixed(true)
-            } else {
-              // Third attempt: use fallback diagram
-              console.warn("Second render failed, using fallback diagram")
-              const fallbackCode = createFallbackDiagram(cleanedCode, lastError)
-              const result = await mermaid.render(id + "_fallback", fallbackCode)
-              svg = result.svg
-              setWasFixed(true)
-            }
-
+            const simplifiedCode = createSimplifiedDiagram(cleanedCode)
+            await initializeMermaidSafely(selectedTheme, screenSize)
+            const id = `mermaid-simplified-${Date.now()}`
+            const result = await mermaid.render(id, simplifiedCode)
+            svg = result.svg
             renderSuccess = true
-            break
-          } catch (renderError) {
-            lastError = renderError instanceof Error ? renderError.message : "Unknown render error"
-            console.warn(`Render attempt ${attempt + 1} failed:`, lastError)
+            setWasFixed(true)
+          } catch (error2) {
+            lastError = error2 instanceof Error ? error2.message : "Render attempt 2 failed"
+            console.warn("Second render attempt failed:", lastError)
 
-            if (attempt === 2) {
-              // Final fallback - create a simple text-based diagram
-              svg = `<svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
-                <rect width="400" height="200" fill="#f8f9fa" stroke="#dee2e6"/>
-                <text x="200" y="80" textAnchor="middle" fontFamily="Arial" fontSize="14" fill="#6c757d">
-                  Diagram Rendering Error
-                </text>
-                <text x="200" y="110" textAnchor="middle" fontFamily="Arial" fontSize="12" fill="#6c757d">
-                  Please check your syntax and try again
-                </text>
-                <text x="200" y="140" textAnchor="middle" fontFamily="Arial" fontSize="10" fill="#6c757d">
-                  Error: ${lastError.substring(0, 50)}...
-                </text>
-              </svg>`
+            // Attempt 3: Use emergency fallback
+            try {
+              const fallbackCode = createEmergencyFallback()
+              await initializeMermaidSafely(selectedTheme, screenSize)
+              const id = `mermaid-fallback-${Date.now()}`
+              const result = await mermaid.render(id, fallbackCode)
+              svg = result.svg
+              renderSuccess = true
+              setWasFixed(true)
+            } catch (error3) {
+              lastError = error3 instanceof Error ? error3.message : "All render attempts failed"
+              console.error("All render attempts failed:", lastError)
+
+              // Final fallback: Create a simple SVG manually
+              svg = createManualSVGFallback(lastError)
               renderSuccess = true
               setWasFixed(true)
             }
@@ -598,97 +583,58 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         }
 
         if (renderSuccess && svg) {
-          const wrapper = document.createElement("div")
-          wrapper.innerHTML = svg
-          wrapper.style.transformOrigin = "center center"
-          wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-          wrapper.style.width = "fit-content"
-          wrapper.style.height = "fit-content"
-          wrapper.style.position = "absolute"
-          wrapper.style.top = "50%"
-          wrapper.style.left = "50%"
-
-          // Add interaction classes for better element selection
-          const svgElement = wrapper.querySelector("svg")
-          if (svgElement) {
-            svgElement.style.userSelect = "none"
-            svgElement.style.pointerEvents = "auto"
-
-            // Add hover effects for interactive elements
-            const nodes = svgElement.querySelectorAll("g[class*='node'], g[class*='actor']")
-            nodes.forEach((node) => {
-              const element = node as HTMLElement
-              element.style.cursor = interactionMode === "select" ? "pointer" : "inherit"
-              element.addEventListener("mouseenter", () => {
-                if (interactionMode === "select") {
-                  element.style.filter = "brightness(1.1)"
-                }
-              })
-              element.addEventListener("mouseleave", () => {
-                if (element !== selectedElement) {
-                  element.style.filter = ""
-                }
-              })
-            })
-          }
-
           try {
-            if (container && !container.contains(wrapper)) {
-              container.appendChild(wrapper)
+            const wrapper = document.createElement("div")
+            wrapper.innerHTML = svg
+            wrapper.style.transformOrigin = "center center"
+            wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+            wrapper.style.width = "fit-content"
+            wrapper.style.height = "fit-content"
+            wrapper.style.position = "absolute"
+            wrapper.style.top = "50%"
+            wrapper.style.left = "50%"
+
+            // Add interaction classes for better element selection
+            const svgElement = wrapper.querySelector("svg")
+            if (svgElement) {
+              svgElement.style.userSelect = "none"
+              svgElement.style.pointerEvents = "auto"
+
+              // Add hover effects for interactive elements
+              try {
+                const nodes = svgElement.querySelectorAll("g[class*='node'], g[class*='actor']")
+                nodes.forEach((node) => {
+                  const element = node as HTMLElement
+                  element.style.cursor = interactionMode === "select" ? "pointer" : "inherit"
+                  element.addEventListener("mouseenter", () => {
+                    if (interactionMode === "select") {
+                      element.style.filter = "brightness(1.1)"
+                    }
+                  })
+                  element.addEventListener("mouseleave", () => {
+                    if (element !== selectedElement) {
+                      element.style.filter = ""
+                    }
+                  })
+                })
+              } catch (e) {
+                console.warn("Failed to add hover effects:", e)
+              }
+            }
+
+            container.appendChild(wrapper)
+
+            if (autoFit) {
+              setTimeout(() => handleFitToScreen(), 100)
+            }
+
+            // Show success message for fixes
+            if (codeWasFixed || isOldSyntax || wasFixed) {
+              showSuccessMessage(container, isOldSyntax, wasFixed, screenSize)
             }
           } catch (e) {
-            console.error("Error appending wrapper:", e)
-            try {
-              container.innerHTML = ""
-              container.appendChild(wrapper)
-            } catch (innerError) {
-              console.error("Failed to append after clearing:", innerError)
-            }
-          }
-
-          if (autoFit) {
-            setTimeout(() => handleFitToScreen(), 100)
-          }
-
-          // Show success message for fixes
-          if (codeWasFixed || isOldSyntax || wasFixed) {
-            const successDiv = document.createElement("div")
-            let messageText = "Syntax automatically fixed"
-            let bgColor = "bg-green-50 border-green-200 text-green-700"
-
-            if (isOldSyntax) {
-              messageText = "Converted from old flowchart syntax"
-              bgColor = "bg-blue-50 border-blue-200 text-blue-700"
-            } else if (wasFixed) {
-              messageText = "Diagram simplified due to syntax errors"
-              bgColor = "bg-yellow-50 border-yellow-200 text-yellow-700"
-            }
-
-            const position = screenSize === "mobile" ? "top-2 left-2 right-2" : "top-4 left-4"
-            successDiv.className = `absolute ${position} ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
-            successDiv.innerHTML = `
-              <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
-            </svg>
-            <span class="flex-1">${messageText}</span>
-          `
-
-            try {
-              container.appendChild(successDiv)
-              setTimeout(() => {
-                try {
-                  if (successDiv.parentNode === container) {
-                    container.removeChild(successDiv)
-                  } else if (successDiv.parentNode) {
-                    successDiv.parentNode.removeChild(successDiv)
-                  }
-                } catch (e) {
-                  console.warn("Error removing success message:", e)
-                }
-              }, 5000)
-            } catch (e) {
-              console.warn("Error adding success message:", e)
-            }
+            console.error("Failed to append rendered content:", e)
+            showErrorMessage(container, "Failed to display diagram", screenSize)
           }
         } else {
           throw new Error("Failed to render diagram after all attempts")
@@ -697,36 +643,163 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         console.error("Final rendering error:", error)
         const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
         setError(errorMessage)
-
-        // Create a user-friendly error display
-        const errorDiv = document.createElement("div")
-        errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
-        errorDiv.innerHTML = `
-        <div class="font-semibold mb-4 text-lg">Unable to Render Diagram</div>
-        <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">
-          The diagram syntax could not be processed. Please try a simpler version or check the syntax.
-        </div>
-        <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
-          <strong class="block mb-2">Suggestions:</strong>
-          • Try describing your diagram in simpler terms<br>
-          • Use basic flowchart or sequence diagram syntax<br>
-          • Avoid special characters in node names<br>
-          • Check that all connections have proper arrows
-        </div>
-      `
-
-        try {
-          container.innerHTML = ""
-          container.appendChild(errorDiv)
-        } catch (e) {
-          console.warn("Error adding error message:", e)
-        }
+        showErrorMessage(container, errorMessage, screenSize)
       } finally {
         setIsRendering(false)
       }
     },
     [isClient, autoFit, handleFitToScreen, isDragging, wasFixed, screenSize, interactionMode, selectedElement],
   )
+
+  // Helper function to safely initialize Mermaid
+  async function initializeMermaidSafely(selectedTheme: Theme, screenSize: string) {
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+        theme: selectedTheme,
+        logLevel: "error",
+        suppressErrorRendering: true,
+        flowchart: {
+          useMaxWidth: false,
+          htmlLabels: true,
+          curve: "basis",
+          padding: screenSize === "mobile" ? 10 : 20,
+        },
+        journey: {
+          useMaxWidth: false,
+        },
+        sequence: {
+          useMaxWidth: false,
+          showSequenceNumbers: true,
+          wrap: true,
+          width: screenSize === "mobile" ? 120 : 150,
+        },
+        gantt: {
+          useMaxWidth: false,
+        },
+        er: {
+          useMaxWidth: false,
+        },
+        class: {
+          useMaxWidth: false,
+        },
+        state: {
+          useMaxWidth: false,
+        },
+        pie: {
+          useMaxWidth: false,
+        },
+      })
+    } catch (e) {
+      console.warn("Failed to initialize Mermaid:", e)
+    }
+  }
+
+  // Helper function to create emergency fallback
+  function createEmergencyFallback(): string {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5  
+    style C fill:#e8f5e8`
+  }
+
+  // Helper function to create manual SVG fallback
+  function createManualSVGFallback(errorMessage: string): string {
+    return `<svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
+    <rect width="400" height="200" fill="#f8f9fa" stroke="#dee2e6" strokeWidth="1"/>
+    <text x="200" y="70" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="16" fill="#495057" fontWeight="bold">
+      Diagram Unavailable
+    </text>
+    <text x="200" y="100" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="12" fill="#6c757d">
+      Unable to render the requested diagram
+    </text>
+    <text x="200" y="130" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="10" fill="#6c757d">
+      Please try a simpler diagram or check the syntax
+    </text>
+    <rect x="50" y="150" width="100" height="30" fill="#007bff" rx="5"/>
+    <text x="100" y="170" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="12" fill="white">
+      Start
+    </text>
+    <rect x="200" y="150" width="100" height="30" fill="#28a745" rx="5"/>
+    <text x="250" y="170" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="12" fill="white">
+      Process
+    </text>
+    <line x1="150" y1="165" x2="200" y2="165" stroke="#333" strokeWidth="2" markerEnd="url(#arrowhead)"/>
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+      </marker>
+    </defs>
+  </svg>`
+  }
+
+  // Helper function to show success message
+  function showSuccessMessage(container: HTMLElement, isOldSyntax: boolean, wasFixed: boolean, screenSize: string) {
+    try {
+      const successDiv = document.createElement("div")
+      let messageText = "Syntax automatically fixed"
+      let bgColor = "bg-green-50 border-green-200 text-green-700"
+
+      if (isOldSyntax) {
+        messageText = "Converted from old flowchart syntax"
+        bgColor = "bg-blue-50 border-blue-200 text-blue-700"
+      } else if (wasFixed) {
+        messageText = "Diagram simplified due to syntax errors"
+        bgColor = "bg-yellow-50 border-yellow-200 text-yellow-700"
+      }
+
+      const position = screenSize === "mobile" ? "top-2 left-2 right-2" : "top-4 left-4"
+      successDiv.className = `absolute ${position} ${bgColor} border rounded-lg p-3 flex items-center gap-2 text-sm z-10 shadow-lg`
+      successDiv.innerHTML = `
+      <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+      </svg>
+      <span class="flex-1">${messageText}</span>
+    `
+
+      container.appendChild(successDiv)
+      setTimeout(() => {
+        try {
+          if (successDiv.parentNode === container) {
+            container.removeChild(successDiv)
+          }
+        } catch (e) {
+          console.warn("Error removing success message:", e)
+        }
+      }, 5000)
+    } catch (e) {
+      console.warn("Error adding success message:", e)
+    }
+  }
+
+  // Helper function to show error message
+  function showErrorMessage(container: HTMLElement, errorMessage: string, screenSize: string) {
+    try {
+      const errorDiv = document.createElement("div")
+      errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
+      errorDiv.innerHTML = `
+      <div class="font-semibold mb-4 text-lg">Unable to Render Diagram</div>
+      <div class="text-sm mb-6 text-red-600 bg-red-50 p-4 rounded-lg">
+        The diagram could not be processed. A simplified version will be shown instead.
+      </div>
+      <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
+        <strong class="block mb-2">Suggestions:</strong>
+        • Try describing your diagram in simpler terms<br>
+        • Use basic flowchart or sequence diagram syntax<br>
+        • Avoid special characters in node names<br>
+        • Check that all connections have proper arrows
+      </div>
+    `
+
+      container.innerHTML = ""
+      container.appendChild(errorDiv)
+    } catch (e) {
+      console.warn("Error adding error message:", e)
+    }
+  }
 
   // Update transform when zoom or pan changes
   useEffect(() => {
@@ -1295,37 +1368,64 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   )
 }
 
-// Helper function to create a simplified version of a diagram when rendering fails
 function createSimplifiedDiagram(originalCode: string): string {
   const lines = originalCode
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
+
+  if (lines.length === 0) {
+    return createEmergencyFallback()
+  }
+
   const firstLine = lines[0].toLowerCase()
 
-  if (firstLine.startsWith("sequencediagram")) {
-    return `sequenceDiagram
-    participant A as User
-    participant B as System
-    A->>B: Request
-    B-->>A: Response`
-  } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
-    return `graph TD
-    A[Start] --> B[Process]
-    B --> C[End]`
-  } else if (firstLine.startsWith("journey")) {
-    return `journey
-    title User Journey
-    section Task
-      Step 1: 3: User
-      Step 2: 4: User`
-  } else {
-    return `graph TD
-    A[Simplified Diagram] --> B[Original syntax had errors]
-    B --> C[Please check the code and try again]
-    style A fill:#ffcccc
-    style B fill:#ffffcc
-    style C fill:#ccffcc`
+  try {
+    if (firstLine.startsWith("sequencediagram")) {
+      return `sequenceDiagram
+        participant A as User
+        participant B as System
+        A->>B: Request
+        B-->>A: Response`
+    } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+      return `graph TD
+        A[Start] --> B[Process]
+        B --> C[End]
+        style A fill:#e3f2fd
+        style B fill:#f3e5f5
+        style C fill:#e8f5e8`
+    } else if (firstLine.startsWith("journey")) {
+      return `journey
+        title User Journey
+        section Task
+          Step 1: 3: User
+          Step 2: 4: User`
+    } else if (firstLine.startsWith("classdiagram")) {
+      return `classDiagram
+        class User {
+          +String name
+          +login()
+        }
+        class System {
+          +process()
+        }
+        User --> System`
+    } else if (firstLine.startsWith("erdiagram")) {
+      return `erDiagram
+        USER {
+            int id PK
+            string name
+        }
+        ORDER {
+            int id PK
+            int user_id FK
+        }
+        USER ||--o{ ORDER : places`
+    } else {
+      return createEmergencyFallback()
+    }
+  } catch (e) {
+    return createEmergencyFallback()
   }
 }
 
