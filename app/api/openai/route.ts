@@ -2,7 +2,15 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model = "gpt-3.5-turbo", retryAttempt = 0 } = await req.json()
+    const {
+      messages,
+      model = "gpt-3.5-turbo",
+      retryAttempt = 0,
+      previousErrors = [],
+      currentDiagram = "",
+      isModification = false,
+      diagramType = null,
+    } = await req.json()
 
     // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY
@@ -40,19 +48,6 @@ export async function POST(req: NextRequest) {
     }`,
       }
     } else {
-      // Find the last generated diagram code from the conversation
-      let lastDiagramCode = ""
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          const content = messages[i].content
-          const codeMatch = content.match(/```(?:mermaid)?\n([\s\S]*?)\n```/)
-          if (codeMatch) {
-            lastDiagramCode = codeMatch[1].trim()
-            break
-          }
-        }
-      }
-
       // Enhanced system message with retry-specific instructions
       const retryInstructions =
         retryAttempt > 0
@@ -60,6 +55,7 @@ export async function POST(req: NextRequest) {
 
 CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
 - This is a retry attempt due to previous syntax errors
+- Previous errors: ${previousErrors.join("; ")}
 - Use ONLY the most basic, validated Mermaid syntax
 - Avoid complex features that might cause parsing errors
 - Start directly with diagram type keyword
@@ -74,6 +70,28 @@ ${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
 `
           : ""
 
+      // Context handling for modifications
+      const contextInstructions =
+        isModification && currentDiagram
+          ? `
+
+MODIFICATION CONTEXT:
+You are modifying an existing diagram. Here is the current diagram code:
+
+\`\`\`mermaid
+${currentDiagram}
+\`\`\`
+
+MODIFICATION RULES:
+- Build upon the existing diagram structure
+- Maintain existing nodes and connections where possible
+- Add the requested improvements while preserving the core flow
+- Keep the same diagram type unless explicitly asked to change
+- Ensure all existing functionality remains intact
+- Only modify what's specifically requested
+`
+          : ""
+
       systemMessage = {
         role: "system",
         content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
@@ -84,23 +102,10 @@ CRITICAL RULES:
 3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
 4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
 5. NEVER start a line with just an arrow (-->> or ->>)
-6. When modifying existing diagrams, maintain the same structure and add improvements
-7. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
-8. ALWAYS use proper Mermaid syntax for each diagram type
-9. Use simple, alphanumeric node names without special characters
-10. Ensure all syntax follows official Mermaid documentation${retryInstructions}
-
-${
-  lastDiagramCode
-    ? `EXISTING DIAGRAM CONTEXT:
-The user has this existing diagram:
-\`\`\`
-${lastDiagramCode}
-\`\`\`
-
-When making modifications, build upon this existing diagram structure. Maintain existing nodes and connections while adding the requested improvements.`
-    : ""
-}
+6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
+7. ALWAYS use proper Mermaid syntax for each diagram type
+8. Use simple, alphanumeric node names without special characters
+9. Ensure all syntax follows official Mermaid documentation${retryInstructions}${contextInstructions}
 
 SEQUENCE DIAGRAM SYNTAX RULES:
 - CORRECT: "ParticipantA ->> ParticipantB: Message"
@@ -136,6 +141,27 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
       }
     }
 
+    // Process the last user message and enhance it with context if needed
+    const processedMessages = [...messages]
+
+    if (!isSummaryRequest && isModification && currentDiagram) {
+      // Get the last user message
+      const lastMessage = processedMessages[processedMessages.length - 1]
+
+      if (lastMessage && lastMessage.role === "user") {
+        // Enhance the user message with context for the AI, but this won't be shown to the user
+        const enhancedContent = `${lastMessage.content}
+
+Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
+
+        // Replace the last message with the enhanced version
+        processedMessages[processedMessages.length - 1] = {
+          ...lastMessage,
+          content: enhancedContent,
+        }
+      }
+    }
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -144,7 +170,7 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!`,
       },
       body: JSON.stringify({
         model,
-        messages: [systemMessage, ...messages],
+        messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
         temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
         max_tokens: isSummaryRequest ? 300 : 1000,

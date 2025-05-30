@@ -193,56 +193,13 @@ export default function Home() {
       currentMessages: Message[],
       attemptNumber = 0,
       previousErrors: string[] = [],
+      isModification = false,
     ): Promise<{ success: boolean; code?: string; error?: string }> => {
       const maxRetries = 3
 
       try {
         // Determine if the user is asking for a specific diagram type
         const diagramType = detectDiagramType(userMessage)
-        let promptContent = userMessage
-
-        // Get current diagram for context if this seems like a modification request
-        const isModificationRequest =
-          userMessage.toLowerCase().includes("add") ||
-          userMessage.toLowerCase().includes("modify") ||
-          userMessage.toLowerCase().includes("change") ||
-          userMessage.toLowerCase().includes("update") ||
-          userMessage.toLowerCase().includes("improve")
-
-        if (isModificationRequest && outputCode) {
-          promptContent = `${userMessage}
-
-Current diagram:
-\`\`\`mermaid
-${outputCode}
-\`\`\`
-
-Please modify this diagram according to the request while maintaining proper Mermaid syntax.`
-        } else if (diagramType) {
-          promptContent = `Create a ${diagramType} diagram for: ${userMessage}. Use proper Mermaid syntax for ${diagramType} diagrams.`
-        }
-
-        // Add retry-specific instructions based on attempt number and previous errors
-        if (attemptNumber > 0) {
-          const errorContext =
-            previousErrors.length > 0
-              ? `\n\nPrevious attempts failed with these errors:\n${previousErrors.map((err, i) => `Attempt ${i + 1}: ${err}`).join("\n")}`
-              : ""
-
-          promptContent = `${promptContent}
-
-RETRY ATTEMPT ${attemptNumber + 1}/${maxRetries}:
-${errorContext}
-
-CRITICAL: This is a retry attempt. Please ensure the Mermaid syntax is absolutely correct:
-${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
-        }
-
-        // Create the message with enhanced prompt
-        const enhancedMessage: Message = {
-          role: "user",
-          content: promptContent,
-        }
 
         const response = await fetch("/api/openai", {
           method: "POST",
@@ -250,9 +207,13 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            messages: [...currentMessages, enhancedMessage],
+            messages: [...currentMessages, { role: "user", content: userMessage }],
             model: "gpt-3.5-turbo",
             retryAttempt: attemptNumber,
+            previousErrors: previousErrors,
+            currentDiagram: outputCode, // Send current diagram for context
+            isModification: isModification,
+            diagramType: diagramType,
           }),
         })
 
@@ -307,7 +268,13 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
             // Wait a brief moment before retrying
             await new Promise((resolve) => setTimeout(resolve, 1000))
 
-            return await generateDiagramWithRetry(userMessage, currentMessages, attemptNumber + 1, newErrors)
+            return await generateDiagramWithRetry(
+              userMessage,
+              currentMessages,
+              attemptNumber + 1,
+              newErrors,
+              isModification,
+            )
           } else {
             return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
           }
@@ -326,7 +293,13 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
           // Wait a brief moment before retrying
           await new Promise((resolve) => setTimeout(resolve, 1000))
 
-          return await generateDiagramWithRetry(userMessage, currentMessages, attemptNumber + 1, newErrors)
+          return await generateDiagramWithRetry(
+            userMessage,
+            currentMessages,
+            attemptNumber + 1,
+            newErrors,
+            isModification,
+          )
         } else {
           return { success: false, error: `Failed after ${maxRetries} attempts. Last error: ${errorMessage}` }
         }
@@ -334,30 +307,6 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
     },
     [outputCode],
   )
-
-  // Function to get retry-specific instructions
-  const getRetryInstructions = (attemptNumber: number, diagramType: string | null, previousErrors: string[]) => {
-    const baseInstructions = `
-1. Start directly with the diagram type keyword (graph, sequenceDiagram, etc.)
-2. Use only valid Mermaid syntax - no explanatory text
-3. Ensure all connections use proper arrow syntax
-4. Validate all node names and labels`
-
-    if (attemptNumber === 1) {
-      return `${baseInstructions}
-5. Focus on simple, basic syntax
-6. Avoid complex features that might cause parsing errors
-7. Use standard node shapes and connection types`
-    } else if (attemptNumber === 2) {
-      return `${baseInstructions}
-5. Use the most minimal syntax possible
-6. Stick to basic examples from Mermaid documentation
-7. Avoid any advanced features or complex structures
-8. Double-check every line for syntax correctness`
-    }
-
-    return baseInstructions
-  }
 
   const handleSubmit = useCallback(async () => {
     if (!draftMessage.trim()) {
@@ -380,9 +329,19 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
     setRetryAttempts(0)
     setRetryHistory([])
 
+    // Check if this is a modification request
+    const isModificationRequest =
+      draftMessage.toLowerCase().includes("add") ||
+      draftMessage.toLowerCase().includes("modify") ||
+      draftMessage.toLowerCase().includes("change") ||
+      draftMessage.toLowerCase().includes("update") ||
+      draftMessage.toLowerCase().includes("improve") ||
+      draftMessage.toLowerCase().includes("refine") ||
+      draftMessage.toLowerCase().includes("enhance")
+
     try {
       setIsRetrying(true)
-      const result = await generateDiagramWithRetry(draftMessage, messages)
+      const result = await generateDiagramWithRetry(draftMessage, messages, 0, [], isModificationRequest)
 
       if (result.success && result.code) {
         setOutputCode(result.code)
@@ -457,21 +416,9 @@ ${getRetryInstructions(attemptNumber, diagramType, previousErrors)}`
 
   const handleSuggestionClick = useCallback(
     async (suggestion: string) => {
-      // Get the current diagram code for context
-      const currentDiagram = outputCode || draftOutputCode
-
-      const improvementPrompt = `Based on the current diagram, ${suggestion.toLowerCase()}. 
-
-Current diagram:
-\`\`\`mermaid
-${currentDiagram}
-\`\`\`
-
-Please update this diagram to incorporate the suggestion while maintaining the existing structure and connections.`
-
       const newMessage: Message = {
         role: "user",
-        content: improvementPrompt,
+        content: suggestion, // Just show the clean suggestion text to user
       }
       const newMessages = [...messages, newMessage]
 
@@ -486,7 +433,8 @@ Please update this diagram to incorporate the suggestion while maintaining the e
 
       try {
         setIsRetrying(true)
-        const result = await generateDiagramWithRetry(improvementPrompt, messages)
+        // Pass true for isModification since suggestions are always modifications
+        const result = await generateDiagramWithRetry(suggestion, messages, 0, [], true)
 
         if (result.success && result.code) {
           setOutputCode(result.code)
@@ -503,7 +451,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
         setIsRetrying(false)
       }
     },
-    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions, outputCode, draftOutputCode],
+    [messages, generateDiagramWithRetry, generateSummaryAndSuggestions],
   )
 
   const handleRetry = useCallback(() => {
@@ -752,7 +700,7 @@ Please update this diagram to incorporate the suggestion while maintaining the e
                     Valid Syntax
                   </Badge>
                   <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                    Auto-Corrected
+                    Context-Aware
                   </Badge>
                 </div>
               )}
