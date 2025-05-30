@@ -21,7 +21,7 @@ export function parseCodeFromMessage(message: string): string {
   return match ? match[1].trim() : message.trim()
 }
 
-// Enhanced validation function with detailed error reporting
+// Enhanced validation function with Mermaid v11.6.0 specific checks
 export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
@@ -50,7 +50,7 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     "classdiagram",
     "journey",
     "gantt",
-    "statediagram",
+    "statediagram-v2",
     "erdiagram",
     "pie",
   ]
@@ -58,6 +58,22 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
   const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
   if (!hasValidStart) {
     errors.push(`Invalid diagram type. Must start with one of: ${validStarts.join(", ")}`)
+  }
+
+  // Check for forbidden elements that cause v11.6.0 errors
+  const forbiddenPatterns = [
+    /%%\{.*\}%%/, // Theme/config blocks
+    /@\w+/, // @ symbols in names
+    /[#$%^&*+=|\\/?<>]/, // Special characters
+    /\u[0-9a-fA-F]{4}/, // Unicode escapes
+    /class\s+\w+\s*\{[^}]*\}\s*\w+\s*-->/, // Combined class def and relationship
+    /subgraph\s+\w+\s*\[.*\]/, // Complex subgraph syntax
+  ]
+
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(code)) {
+      errors.push(`Contains forbidden syntax pattern that may cause v11.6.0 errors: ${pattern.source}`)
+    }
   }
 
   // Diagram-specific validation
@@ -69,6 +85,12 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     validateClassDiagram(lines.slice(1), errors)
   } else if (firstLine.startsWith("erdiagram")) {
     validateERDiagram(lines.slice(1), errors)
+  } else if (firstLine.startsWith("journey")) {
+    validateJourney(lines, errors)
+  } else if (firstLine.startsWith("gantt")) {
+    validateGantt(lines, errors)
+  } else if (firstLine.startsWith("pie")) {
+    validatePie(lines, errors)
   }
 
   // Check for common error patterns
@@ -81,23 +103,53 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
 }
 
 function validateSequenceDiagram(lines: string[], errors: string[]) {
+  const participants = new Set<string>()
+
   for (const line of lines) {
     // Check for arrows without senders
-    if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
+    if (line.match(/^\s*(--?>>?|--?\+\+|-x|--x)/)) {
       errors.push(`Invalid sequence diagram arrow without sender: "${line}"`)
     }
 
     // Check for proper participant format
-    if (line.startsWith("participant") && !line.match(/participant\s+\w+/)) {
-      errors.push(`Invalid participant declaration: "${line}"`)
+    if (line.startsWith("participant")) {
+      const participantMatch = line.match(/participant\s+(\w+)/)
+      if (participantMatch) {
+        participants.add(participantMatch[1])
+      } else {
+        errors.push(`Invalid participant declaration: "${line}"`)
+      }
+    }
+
+    // Validate arrow syntax
+    const arrowMatch = line.match(/^(\w+)\s*(--?>>?|--?\+\+|-x|--x)\s*(\w+)/)
+    if (arrowMatch) {
+      const [, sender, , receiver] = arrowMatch
+      if (!participants.has(sender) && !sender.match(/^\w+$/)) {
+        errors.push(`Invalid sender in sequence: "${sender}"`)
+      }
+      if (!participants.has(receiver) && !receiver.match(/^\w+$/)) {
+        errors.push(`Invalid receiver in sequence: "${receiver}"`)
+      }
     }
   }
 }
 
 function validateFlowchart(lines: string[], errors: string[]) {
   for (const line of lines) {
+    // Check for proper node syntax
+    if (line.includes("[") && !line.includes("]")) {
+      errors.push(`Unclosed bracket in flowchart: "${line}"`)
+    }
+    if (line.includes("{") && !line.includes("}")) {
+      errors.push(`Unclosed brace in flowchart: "${line}"`)
+    }
+    if (line.includes("(") && !line.includes(")")) {
+      errors.push(`Unclosed parenthesis in flowchart: "${line}"`)
+    }
+
     // Check for missing arrows in connections
-    if (line.includes("-->") || line.includes("->")) {
+    if (line.includes("-->") || line.includes("->") || line.includes("-.->")) {
       // Valid connection
       continue
     } else if (line.match(/^\s*\w+.*\w+\s*$/) && !line.includes("[") && !line.includes("{") && !line.includes("(")) {
@@ -118,135 +170,110 @@ function validateClassDiagram(lines: string[], errors: string[]) {
     if (line.includes("{}") && line.includes("-->")) {
       errors.push(`Invalid class syntax - class definition and relationship on same line: "${line}"`)
     }
+
+    // Check for proper relationship syntax
+    if (line.includes("-->") || line.includes("<|--") || line.includes("--|>")) {
+      const relationshipMatch = line.match(/(\w+)\s*(<\|--|--\|>|-->|<--)\s*(\w+)/)
+      if (!relationshipMatch) {
+        errors.push(`Invalid relationship syntax: "${line}"`)
+      }
+    }
   }
 }
 
 function validateERDiagram(lines: string[], errors: string[]) {
   for (const line of lines) {
     // Check for proper entity relationship syntax
-    if (line.includes("||") || line.includes("}|") || line.includes("|{")) {
-      if (!line.match(/\w+\s+[|}{]+[-|]+[|}{]+\s+\w+/)) {
+    if (
+      line.includes("||") ||
+      line.includes("}|") ||
+      line.includes("|{") ||
+      line.includes("}o") ||
+      line.includes("o{")
+    ) {
+      if (!line.match(/\w+\s+[|}{o]+[-|]+[|}{o]+\s+\w+(\s*:\s*.+)?/)) {
         errors.push(`Invalid ER relationship syntax: "${line}"`)
       }
     }
+
+    // Check for proper entity definition
+    if (line.includes("{") && !line.includes("}")) {
+      errors.push(`Unclosed entity definition: "${line}"`)
+    }
   }
 }
 
-// Add this new function after the existing validation functions
+function validateJourney(lines: string[], errors: string[]) {
+  let hasTitle = false
+  let hasSection = false
 
-export function generateContextAwareSuggestions(diagramCode: string, diagramType: string): string[] {
-  const suggestions: string[] = []
+  for (const line of lines) {
+    if (line.startsWith("title")) {
+      hasTitle = true
+    }
+    if (line.startsWith("section")) {
+      hasSection = true
+    }
 
-  // Analyze current diagram structure
-  const lines = diagramCode.split("\n").filter((line) => line.trim().length > 0)
-  const hasStartEnd = diagramCode.includes("Start") || diagramCode.includes("End")
-  const hasDecisions = diagramCode.includes("{") || diagramCode.includes("?")
-  const hasParallel = diagramCode.includes("&")
-  const nodeCount = lines.filter((line) => line.includes("-->")).length
-
-  if (diagramType === "flowchart" || diagramCode.includes("graph")) {
-    if (!hasStartEnd) {
-      suggestions.push("Add clear start and end nodes to define the process boundaries")
+    // Check for proper task format
+    if (line.includes(":") && !line.startsWith("title") && !line.startsWith("section")) {
+      if (!line.match(/\w+.*:\s*\d+\s*:\s*\w+/)) {
+        errors.push(`Invalid journey task format: "${line}"`)
+      }
     }
-    if (!hasDecisions && nodeCount > 2) {
-      suggestions.push("Include decision points with yes/no branches for better flow control")
-    }
-    if (nodeCount < 5) {
-      suggestions.push("Add more detailed process steps between the main actions")
-    }
-    if (!hasParallel && nodeCount > 3) {
-      suggestions.push("Consider adding parallel processing paths for concurrent operations")
-    }
-    suggestions.push("Add error handling and exception paths to make the flow more robust")
-    suggestions.push("Include validation or approval steps in the critical process points")
-  } else if (diagramType === "sequence" || diagramCode.includes("sequenceDiagram")) {
-    const participants = (diagramCode.match(/participant\s+\w+/g) || []).length
-    const interactions = (diagramCode.match(/->>|-->>|-x/g) || []).length
-
-    if (participants < 3) {
-      suggestions.push("Add more participants to show complete system interactions")
-    }
-    if (interactions < 4) {
-      suggestions.push("Include additional message exchanges to show the full workflow")
-    }
-    suggestions.push("Add error response messages and timeout handling")
-    suggestions.push("Include authentication or authorization steps in the sequence")
-    suggestions.push("Add database or external service interactions")
-    suggestions.push("Show return values and confirmation messages")
-  } else if (diagramType === "class" || diagramCode.includes("classDiagram")) {
-    const classes = (diagramCode.match(/class\s+\w+/g) || []).length
-    const relationships = (diagramCode.match(/--|>|<\|--|-->/g) || []).length
-
-    if (classes < 3) {
-      suggestions.push("Add more classes to represent the complete system architecture")
-    }
-    if (relationships < 2) {
-      suggestions.push("Include inheritance and composition relationships between classes")
-    }
-    suggestions.push("Add interface classes to define contracts")
-    suggestions.push("Include abstract base classes for common functionality")
-    suggestions.push("Add utility or helper classes to support main entities")
-    suggestions.push("Show aggregation relationships between related classes")
-  } else if (diagramType === "er" || diagramCode.includes("erDiagram")) {
-    const entities = (diagramCode.match(/\w+\s*\{/g) || []).length
-    const relationships = (diagramCode.match(/\|\|--|\}o--|\|\{/g) || []).length
-
-    if (entities < 3) {
-      suggestions.push("Add more entities to represent the complete data model")
-    }
-    if (relationships < 2) {
-      suggestions.push("Include foreign key relationships between related entities")
-    }
-    suggestions.push("Add lookup tables for enumerated values")
-    suggestions.push("Include audit fields like created_date and updated_date")
-    suggestions.push("Add junction tables for many-to-many relationships")
-    suggestions.push("Include user and role entities for access control")
-  } else if (diagramType === "journey" || diagramCode.includes("journey")) {
-    suggestions.push("Add more detailed steps in the user journey")
-    suggestions.push("Include pain points and satisfaction scores")
-    suggestions.push("Add alternative paths for different user types")
-    suggestions.push("Include touchpoints with different departments")
-    suggestions.push("Add decision points where users might drop off")
-    suggestions.push("Include recovery paths for failed interactions")
-  } else if (diagramType === "gantt" || diagramCode.includes("gantt")) {
-    suggestions.push("Add task dependencies to show project flow")
-    suggestions.push("Include milestone markers for key deliverables")
-    suggestions.push("Add resource allocation and team assignments")
-    suggestions.push("Include buffer time for risk management")
-    suggestions.push("Add parallel tasks to optimize timeline")
-    suggestions.push("Include testing and review phases")
   }
 
-  // Generic suggestions for any diagram type
-  else {
-    suggestions.push("Add more detailed labels and descriptions")
-    suggestions.push("Include additional nodes to show complete workflow")
-    suggestions.push("Add branching paths for different scenarios")
-    suggestions.push("Include error handling and edge cases")
-    suggestions.push("Add more connections to show relationships")
-    suggestions.push("Include validation or checkpoint steps")
+  if (!hasTitle) {
+    errors.push("Journey diagram must have a title")
+  }
+  if (!hasSection) {
+    errors.push("Journey diagram must have at least one section")
+  }
+}
+
+function validateGantt(lines: string[], errors: string[]) {
+  let hasTitle = false
+  let hasDateFormat = false
+
+  for (const line of lines) {
+    if (line.startsWith("title")) {
+      hasTitle = true
+    }
+    if (line.startsWith("dateFormat")) {
+      hasDateFormat = true
+    }
   }
 
-  // Return only the first 3 most relevant suggestions
-  return suggestions.slice(0, 3)
+  if (!hasTitle) {
+    errors.push("Gantt chart must have a title")
+  }
+  if (!hasDateFormat) {
+    errors.push("Gantt chart must have dateFormat specified")
+  }
 }
 
-// Add this function to detect diagram type from user input or code
-export function detectDiagramTypeFromCode(code: string): string {
-  const lowerCode = code.toLowerCase()
+function validatePie(lines: string[], errors: string[]) {
+  let hasTitle = false
 
-  if (lowerCode.includes("sequencediagram")) return "sequence"
-  if (lowerCode.includes("classdiagram")) return "class"
-  if (lowerCode.includes("erdiagram")) return "er"
-  if (lowerCode.includes("journey")) return "journey"
-  if (lowerCode.includes("gantt")) return "gantt"
-  if (lowerCode.includes("statediagram")) return "state"
-  if (lowerCode.includes("pie")) return "pie"
-  if (lowerCode.includes("graph") || lowerCode.includes("flowchart")) return "flowchart"
+  for (const line of lines) {
+    if (line.startsWith("title")) {
+      hasTitle = true
+    }
 
-  return "flowchart" // default
+    // Check for proper data format
+    if (line.includes(":") && !line.startsWith("title")) {
+      if (!line.match(/"[^"]*"\s*:\s*\d+(\.\d+)?/)) {
+        errors.push(`Invalid pie chart data format: "${line}"`)
+      }
+    }
+  }
+
+  if (!hasTitle) {
+    errors.push("Pie chart must have a title")
+  }
 }
 
+// Enhanced sanitization with v11.6.0 compatibility focus
 export function sanitizeMermaidCode(code: string): string {
   if (!code || typeof code !== "string") {
     return ""
@@ -290,35 +317,51 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
   }
 
-  // Enhanced syntax cleaning and validation
+  // Enhanced syntax cleaning for v11.6.0 compatibility
   cleanedCode = cleanInvalidSyntax(cleanedCode)
 
-  // Fix common sequence diagram issues
+  // Apply diagram-specific fixes
   if (cleanedCode.includes("sequenceDiagram")) {
     cleanedCode = fixSequenceDiagramSyntax(cleanedCode)
   }
 
-  // Fix common flowchart issues
   if (cleanedCode.includes("graph") || cleanedCode.includes("flowchart")) {
     cleanedCode = fixFlowchartSyntax(cleanedCode)
   }
 
-  // Fix ER diagram issues
   if (cleanedCode.includes("erDiagram")) {
     cleanedCode = fixERDiagramSyntax(cleanedCode)
   }
 
-  // Fix class diagram issues - ENHANCED
   if (cleanedCode.includes("classDiagram")) {
     cleanedCode = fixClassDiagramSyntax(cleanedCode)
   }
 
-  // Remove empty lines and normalize whitespace
+  if (cleanedCode.includes("journey")) {
+    cleanedCode = fixJourneySyntax(cleanedCode)
+  }
+
+  if (cleanedCode.includes("gantt")) {
+    cleanedCode = fixGanttSyntax(cleanedCode)
+  }
+
+  if (cleanedCode.includes("pie")) {
+    cleanedCode = fixPieSyntax(cleanedCode)
+  }
+
+  // Final cleanup
   cleanedCode = cleanedCode
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .join("\n")
+
+  // If still invalid, return a safe fallback
+  const validation = validateMermaidCode(cleanedCode)
+  if (!validation.isValid) {
+    console.warn("Generated invalid code, using fallback:", validation.errors)
+    return createSafeFallbackDiagram(cleanedCode)
+  }
 
   return cleanedCode
 }
@@ -326,11 +369,17 @@ export function sanitizeMermaidCode(code: string): string {
 function cleanInvalidSyntax(code: string): string {
   let cleaned = code
 
+  // Remove theme/config blocks that cause v11.6.0 errors
+  cleaned = cleaned.replace(/%%\{[^}]*\}%%/g, "")
+
   // Remove common error patterns
   cleaned = cleaned.replace(/ERROR\s*--\s*ERROR_TYPE\s*:\s*[^\n]*/gi, "")
   cleaned = cleaned.replace(/\bERROR\b/gi, "")
   cleaned = cleaned.replace(/\bIDENTIFYING\b(?!\s*:)/gi, "")
   cleaned = cleaned.replace(/\bBelo\b/gi, "")
+
+  // Remove special characters that cause issues
+  cleaned = cleaned.replace(/[@#$%^&*+=|\\/?<>]/g, "")
 
   // Fix malformed entity relationships
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
@@ -340,8 +389,8 @@ function cleanInvalidSyntax(code: string): string {
   cleaned = cleaned.replace(/\}\s*class\s+/g, "}\n    class ")
   cleaned = cleaned.replace(/\}\s*(\w+)\s*-->/g, "}\n    $1 -->")
 
-  // Remove invalid characters and patterns
-  cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()\n]/g, "")
+  // Remove Unicode escapes
+  cleaned = cleaned.replace(/\\u[0-9a-fA-F]{4}/g, "")
 
   // Fix broken lines
   cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
@@ -349,6 +398,190 @@ function cleanInvalidSyntax(code: string): string {
   return cleaned
 }
 
+function fixJourneySyntax(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+  let hasTitle = false
+
+  for (const line of lines) {
+    let fixedLine = line.trim()
+
+    if (fixedLine === "journey") {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    if (fixedLine.startsWith("title")) {
+      hasTitle = true
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    if (fixedLine.startsWith("section")) {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Fix task format
+    if (fixedLine.includes(":") && !fixedLine.startsWith("title") && !fixedLine.startsWith("section")) {
+      const parts = fixedLine.split(":")
+      if (parts.length >= 3) {
+        const task = parts[0].trim()
+        const score = parts[1].trim()
+        const actor = parts.slice(2).join(":").trim()
+        fixedLine = `      ${task}: ${score}: ${actor}`
+      }
+    }
+
+    fixedLines.push(fixedLine)
+  }
+
+  if (!hasTitle) {
+    fixedLines.splice(1, 0, "    title User Journey")
+  }
+
+  return fixedLines.join("\n")
+}
+
+function fixGanttSyntax(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+  let hasTitle = false
+  let hasDateFormat = false
+
+  for (const line of lines) {
+    const fixedLine = line.trim()
+
+    if (fixedLine === "gantt") {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    if (fixedLine.startsWith("title")) {
+      hasTitle = true
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    if (fixedLine.startsWith("dateFormat")) {
+      hasDateFormat = true
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    fixedLines.push(fixedLine)
+  }
+
+  if (!hasTitle) {
+    fixedLines.splice(1, 0, "    title Project Timeline")
+  }
+
+  if (!hasDateFormat) {
+    fixedLines.splice(hasTitle ? 2 : 1, 0, "    dateFormat YYYY-MM-DD")
+  }
+
+  return fixedLines.join("\n")
+}
+
+function fixPieSyntax(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+  let hasTitle = false
+
+  for (const line of lines) {
+    let fixedLine = line.trim()
+
+    if (fixedLine === "pie") {
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    if (fixedLine.startsWith("title")) {
+      hasTitle = true
+      fixedLines.push(fixedLine)
+      continue
+    }
+
+    // Fix data format
+    if (fixedLine.includes(":") && !fixedLine.startsWith("title")) {
+      const parts = fixedLine.split(":")
+      if (parts.length >= 2) {
+        const label = parts[0].trim().replace(/^["']|["']$/g, "")
+        const value = parts[1].trim()
+        fixedLine = `    "${label}" : ${value}`
+      }
+    }
+
+    fixedLines.push(fixedLine)
+  }
+
+  if (!hasTitle) {
+    fixedLines.splice(1, 0, "    title Chart")
+  }
+
+  return fixedLines.join("\n")
+}
+
+function createSafeFallbackDiagram(originalCode: string): string {
+  const firstLine = originalCode.split("\n")[0].toLowerCase()
+
+  if (firstLine.includes("sequence")) {
+    return `sequenceDiagram
+    participant A as User
+    participant B as System
+    A->>B: Request
+    B-->>A: Response`
+  } else if (firstLine.includes("class")) {
+    return `classDiagram
+    class User {
+        +name: string
+        +login()
+    }
+    class System {
+        +process()
+    }
+    User --> System`
+  } else if (firstLine.includes("er")) {
+    return `erDiagram
+    USER ||--o{ ORDER : places
+    USER {
+        int id PK
+        string name
+    }
+    ORDER {
+        int id PK
+        int user_id FK
+    }`
+  } else if (firstLine.includes("journey")) {
+    return `journey
+    title User Journey
+    section Login
+      Enter credentials: 3: User
+      Validate: 2: System
+      Success: 5: User`
+  } else if (firstLine.includes("gantt")) {
+    return `gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    Task1 :2024-01-01, 30d
+    Task2 :after Task1, 20d`
+  } else if (firstLine.includes("pie")) {
+    return `pie title Distribution
+    "Category A" : 42.96
+    "Category B" : 50.05
+    "Category C" : 6.99`
+  } else {
+    return `graph TD
+    A[Start] --> B[Process]
+    B --> C[Decision]
+    C -->|Yes| D[Success]
+    C -->|No| E[Retry]
+    E --> B
+    D --> F[End]`
+  }
+}
+
+// Keep existing functions but enhance them
 function fixERDiagramSyntax(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
@@ -370,12 +603,18 @@ function fixERDiagramSyntax(code: string): string {
     }
 
     // Fix relationship syntax
-    if (fixedLine.includes("||") || fixedLine.includes("}|") || fixedLine.includes("|{")) {
+    if (
+      fixedLine.includes("||") ||
+      fixedLine.includes("}|") ||
+      fixedLine.includes("|{") ||
+      fixedLine.includes("}o") ||
+      fixedLine.includes("o{")
+    ) {
       // Ensure proper relationship format: ENTITY ||--|| ENTITY : LABEL
-      const relationshipMatch = fixedLine.match(/(\w+)\s*([|}{]+[-|]+[|}{]+)\s*(\w+)\s*:\s*(.+)/)
+      const relationshipMatch = fixedLine.match(/(\w+)\s*([|}{o]+[-|]+[|}{o]+)\s*(\w+)(\s*:\s*(.+))?/)
       if (relationshipMatch) {
-        const [, entity1, relationship, entity2, label] = relationshipMatch
-        fixedLine = `${entity1} ${relationship} ${entity2} : ${label}`
+        const [, entity1, relationship, entity2, , label] = relationshipMatch
+        fixedLine = `${entity1} ${relationship} ${entity2}${label ? ` : ${label}` : ""}`
       }
     }
 
@@ -391,7 +630,7 @@ function fixERDiagramSyntax(code: string): string {
           .filter((attr) => attr.length > 0)
           .map((attr) => {
             // Clean attribute format
-            return attr.replace(/\s+/g, " ").replace(/[^\w\s$$$$]/g, "")
+            return attr.replace(/\s+/g, " ").replace(/[^\w\s]/g, "")
           })
           .join("\n        ")
 
@@ -628,7 +867,7 @@ function fixSequenceDiagramSyntax(code: string): string {
     }
 
     // Fix arrows that start without a sender
-    if (fixedLine.match(/^(--?>>?|--?\+\+|-x)/)) {
+    if (fixedLine.match(/^(--?>>?|--?\+\+|-x|--x)/)) {
       if (lastParticipant) {
         fixedLine = `${lastParticipant} ${fixedLine}`
       } else {
@@ -643,7 +882,7 @@ function fixSequenceDiagramSyntax(code: string): string {
     }
 
     // Extract participant from valid arrow syntax and add to participants set
-    const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)/)
+    const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x|--x)\s*(\w+)/)
     if (arrowMatch) {
       const [, sender, , receiver] = arrowMatch
       participants.add(sender)
@@ -671,7 +910,7 @@ function fixFlowchartSyntax(code: string): string {
     }
 
     // Ensure connections have proper arrow syntax
-    if (fixedLine.includes("-->") || fixedLine.includes("->")) {
+    if (fixedLine.includes("-->") || fixedLine.includes("->") || fixedLine.includes("-.->")) {
       // Line already has arrows, keep as is
       fixedLines.push(fixedLine)
     } else if (fixedLine.match(/^\s*\w+.*\w+\s*$/)) {
@@ -688,6 +927,120 @@ function fixFlowchartSyntax(code: string): string {
   }
 
   return fixedLines.join("\n")
+}
+
+// Keep existing functions for context-aware suggestions and other utilities
+export function generateContextAwareSuggestions(diagramCode: string, diagramType: string): string[] {
+  const suggestions: string[] = []
+
+  // Analyze current diagram structure
+  const lines = diagramCode.split("\n").filter((line) => line.trim().length > 0)
+  const hasStartEnd = diagramCode.includes("Start") || diagramCode.includes("End")
+  const hasDecisions = diagramCode.includes("{") || diagramCode.includes("?")
+  const hasParallel = diagramCode.includes("&")
+  const nodeCount = lines.filter((line) => line.includes("-->")).length
+
+  if (diagramType === "flowchart" || diagramCode.includes("graph")) {
+    if (!hasStartEnd) {
+      suggestions.push("Add clear start and end nodes to define the process boundaries")
+    }
+    if (!hasDecisions && nodeCount > 2) {
+      suggestions.push("Include decision points with yes/no branches for better flow control")
+    }
+    if (nodeCount < 5) {
+      suggestions.push("Add more detailed process steps between the main actions")
+    }
+    if (!hasParallel && nodeCount > 3) {
+      suggestions.push("Consider adding parallel processing paths for concurrent operations")
+    }
+    suggestions.push("Add error handling and exception paths to make the flow more robust")
+    suggestions.push("Include validation or approval steps in the critical process points")
+  } else if (diagramType === "sequence" || diagramCode.includes("sequenceDiagram")) {
+    const participants = (diagramCode.match(/participant\s+\w+/g) || []).length
+    const interactions = (diagramCode.match(/->>|-->>|-x/g) || []).length
+
+    if (participants < 3) {
+      suggestions.push("Add more participants to show complete system interactions")
+    }
+    if (interactions < 4) {
+      suggestions.push("Include additional message exchanges to show the full workflow")
+    }
+    suggestions.push("Add error response messages and timeout handling")
+    suggestions.push("Include authentication or authorization steps in the sequence")
+    suggestions.push("Add database or external service interactions")
+    suggestions.push("Show return values and confirmation messages")
+  } else if (diagramType === "class" || diagramCode.includes("classDiagram")) {
+    const classes = (diagramCode.match(/class\s+\w+/g) || []).length
+    const relationships = (diagramCode.match(/--|>|<\|--|-->/g) || []).length
+
+    if (classes < 3) {
+      suggestions.push("Add more classes to represent the complete system architecture")
+    }
+    if (relationships < 2) {
+      suggestions.push("Include inheritance and composition relationships between classes")
+    }
+    suggestions.push("Add interface classes to define contracts")
+    suggestions.push("Include abstract base classes for common functionality")
+    suggestions.push("Add utility or helper classes to support main entities")
+    suggestions.push("Show aggregation relationships between related classes")
+  } else if (diagramType === "er" || diagramCode.includes("erDiagram")) {
+    const entities = (diagramCode.match(/\w+\s*\{/g) || []).length
+    const relationships = (diagramCode.match(/\|\|--|\}o--|\|\{/g) || []).length
+
+    if (entities < 3) {
+      suggestions.push("Add more entities to represent the complete data model")
+    }
+    if (relationships < 2) {
+      suggestions.push("Include foreign key relationships between related entities")
+    }
+    suggestions.push("Add lookup tables for enumerated values")
+    suggestions.push("Include audit fields like created_date and updated_date")
+    suggestions.push("Add junction tables for many-to-many relationships")
+    suggestions.push("Include user and role entities for access control")
+  } else if (diagramType === "journey" || diagramCode.includes("journey")) {
+    suggestions.push("Add more detailed steps in the user journey")
+    suggestions.push("Include pain points and satisfaction scores")
+    suggestions.push("Add alternative paths for different user types")
+    suggestions.push("Include touchpoints with different departments")
+    suggestions.push("Add decision points where users might drop off")
+    suggestions.push("Include recovery paths for failed interactions")
+  } else if (diagramType === "gantt" || diagramCode.includes("gantt")) {
+    suggestions.push("Add task dependencies to show project flow")
+    suggestions.push("Include milestone markers for key deliverables")
+    suggestions.push("Add resource allocation and team assignments")
+    suggestions.push("Include buffer time for risk management")
+    suggestions.push("Add parallel tasks to optimize timeline")
+    suggestions.push("Include testing and review phases")
+  }
+
+  // Generic suggestions for any diagram type
+  else {
+    suggestions.push("Add more detailed labels and descriptions")
+    suggestions.push("Include additional nodes to show complete workflow")
+    suggestions.push("Add branching paths for different scenarios")
+    suggestions.push("Include error handling and edge cases")
+    suggestions.push("Add more connections to show relationships")
+    suggestions.push("Include validation or checkpoint steps")
+  }
+
+  // Return only the first 3 most relevant suggestions
+  return suggestions.slice(0, 3)
+}
+
+// Add this function to detect diagram type from user input or code
+export function detectDiagramTypeFromCode(code: string): string {
+  const lowerCode = code.toLowerCase()
+
+  if (lowerCode.includes("sequencediagram")) return "sequence"
+  if (lowerCode.includes("classdiagram")) return "class"
+  if (lowerCode.includes("erdiagram")) return "er"
+  if (lowerCode.includes("journey")) return "journey"
+  if (lowerCode.includes("gantt")) return "gantt"
+  if (lowerCode.includes("statediagram")) return "state"
+  if (lowerCode.includes("pie")) return "pie"
+  if (lowerCode.includes("graph") || lowerCode.includes("flowchart")) return "flowchart"
+
+  return "flowchart" // default
 }
 
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {

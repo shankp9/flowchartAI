@@ -68,7 +68,7 @@ Respond ONLY with valid JSON in this exact format:
 }`,
       }
     } else {
-      // Enhanced system message with retry-specific instructions
+      // Enhanced system message with strict Mermaid v11.6.0 compatibility
       const retryInstructions =
         retryAttempt > 0
           ? `
@@ -114,58 +114,83 @@ MODIFICATION RULES:
 
       systemMessage = {
         role: "system",
-        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code.
+        content: `You are an expert Mermaid v11.6.0 diagram generator. You MUST generate ONLY valid, compatible Mermaid syntax code.
 
-CRITICAL RULES:
+CRITICAL COMPATIBILITY RULES FOR MERMAID v11.6.0:
 1. NEVER include explanatory text before or after the diagram code
 2. ALWAYS start your response directly with the diagram type keyword
-3. For flowcharts, ALWAYS use proper connections between nodes with arrows (-->)
-4. For sequence diagrams, EVERY arrow MUST have both sender and receiver
-5. NEVER start a line with just an arrow (-->> or ->>)
-6. NEVER use words like "ERROR", "IDENTIFYING", or other invalid keywords
-7. ALWAYS use proper Mermaid syntax for each diagram type
-8. Use simple, alphanumeric node names without special characters
-9. Ensure all syntax follows official Mermaid documentation
+3. Use ONLY proven, stable Mermaid syntax patterns
+4. AVOID experimental or newer features that may not be supported
+5. Use simple, alphanumeric node names (A, B, C, User, System, etc.)
+6. NEVER use special characters in node names except underscore
+7. Ensure all syntax follows Mermaid v11.6.0 documentation exactly
 
-CLASS DIAGRAM SPECIFIC RULES:
-10. ALWAYS separate class definitions from relationships
-11. Use proper class block syntax: class ClassName { }
-12. NEVER combine class definitions with relationships on the same line
-13. Put each class member on a separate line within the class block
-14. Use proper relationship syntax: ClassA --> ClassB
-
-SEQUENCE DIAGRAM SYNTAX RULES:
-- CORRECT: "ParticipantA ->> ParticipantB: Message"
-- CORRECT: "ParticipantA -->> ParticipantB: Response"
-- INCORRECT: "->> ParticipantB: Message" (missing sender)
-- INCORRECT: "-->> ParticipantB: Response" (missing sender)
-
-FLOWCHART SYNTAX RULES:
+FLOWCHART RULES (graph TD/LR):
 - CORRECT: "A[Start] --> B[Process] --> C[End]"
+- CORRECT: "A --> B --> C"
 - INCORRECT: "A[Start] B[Process] C[End]" (missing arrows)
+- Use only: [], {}, (), (())
+- Arrows: -->, -->, -.->
 
-ER DIAGRAM SYNTAX RULES:
-- CORRECT: "CUSTOMER ||--o{ ORDER : places"
-- CORRECT: "USER { int id PK }"
-- INCORRECT: "USER ERROR -- ERROR_TYPE : Below"
+SEQUENCE DIAGRAM RULES:
+- CORRECT: "participant A" then "A->>B: Message"
+- CORRECT: "A-->>B: Response"
+- INCORRECT: "->>B: Message" (missing sender)
+- Use only: ->>, -->, -x, --x
+- Always declare participants first
 
-CLASS DIAGRAM SYNTAX RULES:
-- CORRECT: "class User { +String name +login() }"
+CLASS DIAGRAM RULES:
+- CORRECT: "class User { +name: string +login() }"
 - CORRECT: "User --> System"
-- INCORRECT: "class User { }User --> System" (combined syntax)
-- INCORRECT: "class User ERROR IDENTIFYING"
+- NEVER combine class definition with relationships on same line
+- Use proper inheritance: User <|-- Admin
+- Use composition: User *-- Address
 
-VALID DIAGRAM TYPES:
-- graph TD / graph LR (flowchart)
-- sequenceDiagram
-- classDiagram
-- journey
-- gantt
-- stateDiagram-v2
-- erDiagram
-- pie
+ER DIAGRAM RULES:
+- CORRECT: "USER ||--o{ ORDER : places"
+- CORRECT: "USER { int id PK string name }"
+- Use only: ||--||, }o--o{, ||--o{
+- Always define entities before relationships
 
-RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!${retryInstructions}${contextInstructions}`,
+JOURNEY RULES:
+- CORRECT: "journey\n    title My Journey\n    section Section1\n      Task1: 5: Actor"
+- Always include title and sections
+- Score format: "Task: score: Actor"
+
+GANTT RULES:
+- CORRECT: "gantt\n    title Project\n    dateFormat YYYY-MM-DD\n    Task1 :2024-01-01, 30d"
+- Always include title and dateFormat
+- Use standard date formats only
+
+STATE DIAGRAM RULES:
+- Use: stateDiagram-v2
+- CORRECT: "[*] --> State1\n    State1 --> State2"
+- Use [*] for start/end states
+
+PIE CHART RULES:
+- CORRECT: "pie title Chart\n    \"Label1\" : 42.96\n    \"Label2\" : 50.05"
+- Always include title
+- Use quotes for labels with spaces
+
+FORBIDDEN ELEMENTS (WILL CAUSE ERRORS):
+- Complex styling (%%{wrap}%%, themes in code)
+- Subgraphs with complex nesting
+- Custom CSS classes
+- Advanced formatting
+- Experimental syntax
+- Non-ASCII characters in node names
+- Special symbols: @, #, $, %, ^, &, *, +, =, |, \\, /, ?, <, >
+
+MANDATORY VALIDATION CHECKLIST:
+✓ Starts with valid diagram type
+✓ No explanatory text
+✓ Simple node names only
+✓ Proper arrow syntax
+✓ No forbidden elements
+✓ Compatible with Mermaid v11.6.0
+✓ Tested syntax patterns only
+
+RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS!${retryInstructions}${contextInstructions}`,
       }
     }
 
@@ -180,7 +205,7 @@ RESPOND WITH VALID MERMAID CODE ONLY - NO EXPLANATIONS OR ERROR MESSAGES!${retry
         // Enhance the user message with context for the AI, but this won't be shown to the user
         const enhancedContent = `${lastMessage.content}
 
-Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
+Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections. Use only Mermaid v11.6.0 compatible syntax.`
 
         // Replace the last message with the enhanced version
         processedMessages[processedMessages.length - 1] = {
@@ -200,8 +225,11 @@ Based on the current diagram, please modify it according to the request while ma
         model,
         messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
-        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
-        max_tokens: isSummaryRequest ? 300 : 1000,
+        temperature: retryAttempt > 0 ? 0.05 : 0.1, // Very low temperature for consistency
+        max_tokens: isSummaryRequest ? 300 : 800, // Reduced to encourage simpler responses
+        top_p: 0.9, // Reduce randomness
+        frequency_penalty: 0.1, // Slight penalty for repetition
+        presence_penalty: 0.1, // Encourage focused responses
       }),
     })
 
