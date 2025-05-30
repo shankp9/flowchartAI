@@ -4,7 +4,25 @@ import type React from "react"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import mermaid from "mermaid"
-import { Copy, Palette, AlertCircle, Code, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Download, Move, Maximize, MousePointer2, Hand, Navigation, Settings, Grid3X3 } from 'lucide-react'
+import {
+  Copy,
+  Palette,
+  AlertCircle,
+  Code,
+  CheckCircle,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  Download,
+  Maximize,
+  MousePointer2,
+  Hand,
+  Navigation,
+  Settings,
+} from "lucide-react"
 import type { Theme } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
 
@@ -32,7 +50,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
   // Enhanced zoom and pan state
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan = useState({ x: 0, y: 0 })
+  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [showControls, setShowControls] = useState(true)
@@ -41,7 +59,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
   // Control panel state
   const [controlsExpanded, setControlsExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<'zoom' | 'theme' | 'export'>('zoom')
+  const [activeTab, setActiveTab] = useState<"zoom" | "theme" | "export">("zoom")
 
   // Initialize client-side state
   useEffect(() => {
@@ -91,21 +109,21 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
-      
+
       // Get mouse position relative to container
       const rect = container.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
-      
+
       // Calculate zoom
       const delta = e.deltaY > 0 ? 0.9 : 1.1
       const newZoom = Math.max(0.1, Math.min(10, zoom * delta))
-      
+
       // Calculate new pan to zoom towards mouse position
       const zoomRatio = newZoom / zoom
       const newPanX = mouseX - (mouseX - pan.x) * zoomRatio
       const newPanY = mouseY - (mouseY - pan.y) * zoomRatio
-      
+
       setZoom(newZoom)
       setPan({ x: newPanX, y: newPanY })
       setShowControls(true)
@@ -227,13 +245,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     }
   }, [copyToClipboard, sanitizedCode])
 
-  const handleDownload = useCallback((format: 'svg' | 'png' = 'svg') => {
+  const handleDownload = useCallback((format: "svg" | "png" = "svg") => {
     const container = containerRef.current
     if (!container) return
 
     const svgElement = container.querySelector("svg")
     if (svgElement) {
-      if (format === 'svg') {
+      if (format === "svg") {
         const svgData = svgElement.outerHTML
         const blob = new Blob([svgData], { type: "image/svg+xml" })
         const url = URL.createObjectURL(blob)
@@ -249,12 +267,12 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
         const img = new Image()
-        
+
         img.onload = () => {
           canvas.width = img.width
           canvas.height = img.height
           ctx?.drawImage(img, 0, 0)
-          
+
           canvas.toBlob((blob) => {
             if (blob) {
               const url = URL.createObjectURL(blob)
@@ -266,9 +284,9 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               document.body.removeChild(link)
               URL.revokeObjectURL(url)
             }
-          }, 'image/png')
+          }, "image/png")
         }
-        
+
         const svgData = svgElement.outerHTML
         const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
         const svgUrl = URL.createObjectURL(svgBlob)
@@ -292,15 +310,15 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
   const handleFitToScreen = useCallback(() => {
     const container = svgContainerRef.current
     const svgWrapper = containerRef.current?.querySelector("div")
-    
+
     if (container && svgWrapper) {
       const containerRect = container.getBoundingClientRect()
       const svgRect = svgWrapper.getBoundingClientRect()
-      
+
       const scaleX = (containerRect.width * 0.9) / svgRect.width
       const scaleY = (containerRect.height * 0.9) / svgRect.height
       const newZoom = Math.min(scaleX, scaleY, 2) // Max zoom of 2x for fit
-      
+
       setZoom(newZoom)
       setPan({ x: 0, y: 0 })
       setAutoFit(true)
@@ -565,15 +583,15 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
     <div className={`w-full h-full relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : ""}`}>
       {/* Grid Background */}
       {showGrid && (
-        <div 
+        <div
           className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
             backgroundImage: `
               linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
               linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
             `,
-            backgroundSize: '20px 20px',
-            transform: `translate(${pan.x % 20}px, ${pan.y % 20}px) scale(${zoom})`
+            backgroundSize: "20px 20px",
+            transform: `translate(${pan.x % 20}px, ${pan.y % 20}px) scale(${zoom})`,
           }}
         />
       )}
@@ -598,11 +616,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                 >
                   <ZoomOut className="h-3 w-3" />
                 </button>
-                
+
                 <div className="px-2 py-1 text-xs font-mono bg-white rounded min-w-[3rem] text-center">
                   {Math.round(zoom * 100)}%
                 </div>
-                
+
                 <button
                   className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-white transition-colors disabled:opacity-50"
                   onClick={handleZoomIn}
@@ -650,16 +668,16 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
               {/* Tabs */}
               <div className="flex border-b border-gray-200">
                 {[
-                  { id: 'zoom', label: 'View', icon: Navigation },
-                  { id: 'theme', label: 'Theme', icon: Palette },
-                  { id: 'export', label: 'Export', icon: Download },
+                  { id: "zoom", label: "View", icon: Navigation },
+                  { id: "theme", label: "Theme", icon: Palette },
+                  { id: "export", label: "Export", icon: Download },
                 ].map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
                     className={`flex-1 flex items-center justify-center gap-2 p-3 text-xs font-medium transition-colors ${
                       activeTab === id
-                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                        ? "bg-blue-50 text-blue-600 border-b-2 border-blue-600"
+                        : "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
                     }`}
                     onClick={() => setActiveTab(id as any)}
                   >
@@ -671,7 +689,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
 
               {/* Tab Content */}
               <div className="p-4">
-                {activeTab === 'zoom' && (
+                {activeTab === "zoom" && (
                   <div className="space-y-4">
                     {/* Zoom Controls */}
                     <div>
@@ -684,11 +702,11 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                         >
                           <ZoomOut className="h-3 w-3" />
                         </button>
-                        
+
                         <div className="flex-1 bg-gray-100 rounded-lg p-2 text-center">
                           <span className="text-sm font-mono">{Math.round(zoom * 100)}%</span>
                         </div>
-                        
+
                         <button
                           className="w-8 h-8 flex items-center justify-center rounded-lg border hover:bg-gray-50 transition-colors disabled:opacity-50"
                           onClick={handleZoomIn}
@@ -708,7 +726,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                         <Maximize className="h-3 w-3" />
                         Fit Screen
                       </button>
-                      
+
                       <button
                         className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
                         onClick={handleResetView}
@@ -723,13 +741,13 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                       <span className="text-xs font-medium text-gray-700">Show Grid</span>
                       <button
                         className={`w-10 h-6 rounded-full transition-colors ${
-                          showGrid ? 'bg-blue-600' : 'bg-gray-300'
+                          showGrid ? "bg-blue-600" : "bg-gray-300"
                         }`}
                         onClick={() => setShowGrid(!showGrid)}
                       >
                         <div
                           className={`w-4 h-4 bg-white rounded-full transition-transform ${
-                            showGrid ? 'translate-x-5' : 'translate-x-1'
+                            showGrid ? "translate-x-5" : "translate-x-1"
                           }`}
                         />
                       </button>
@@ -737,7 +755,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                   </div>
                 )}
 
-                {activeTab === 'theme' && (
+                {activeTab === "theme" && (
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-2">Diagram Theme</label>
@@ -762,8 +780,8 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                           key={themeOption}
                           className={`p-2 text-xs rounded-lg border transition-colors ${
                             theme === themeOption
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-gray-300'
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-200 hover:border-gray-300"
                           }`}
                           onClick={() => {
                             const event = { target: { value: themeOption } } as any
@@ -777,7 +795,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                   </div>
                 )}
 
-                {activeTab === 'export' && (
+                {activeTab === "export" && (
                   <div className="space-y-4">
                     {/* Copy Options */}
                     <div>
@@ -791,7 +809,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                           <Copy className="h-3 w-3" />
                           SVG
                         </button>
-                        
+
                         <button
                           className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
                           onClick={handleCodeCopy}
@@ -808,27 +826,23 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={() => handleDownload('svg')}
+                          onClick={() => handleDownload("svg")}
                           disabled={isRendering}
                         >
                           <Download className="h-3 w-3" />
                           SVG
                         </button>
-                        
+
                         <button
                           className="flex items-center justify-center gap-2 p-2 text-xs border rounded-lg hover:bg-gray-50 transition-colors"
-                          onClick={() => handleDownload('png')}
+                          onClick={() => handleDownload("png")}
                           disabled={isRendering}
                         >
                           <Download className="h-3 w-3" />
                           PNG
                         </button>
                       </div>
-                    </div>                          PNG
-                        </button>
-                      </div>
                     </div>
-
                     {/* Code View Toggle */}
                     <div>
                       <button
@@ -874,7 +888,9 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
         <div className="absolute top-6 left-6 z-10 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg shadow-lg">
           <div className="flex items-center gap-2">
             <Hand className="h-3 w-3" />
-            <span>Pan: {Math.round(pan.x)}, {Math.round(pan.y)}</span>
+            <span>
+              Pan: {Math.round(pan.x)}, {Math.round(pan.y)}
+            </span>
           </div>
         </div>
       )}
@@ -950,7 +966,7 @@ export function Mermaid({ chart, isFullscreen = false, onFullscreenChange, isSta
       <div
         ref={svgContainerRef}
         className={`w-full h-full relative overflow-hidden transition-colors duration-300 ${
-          showGrid ? 'bg-gray-50' : 'bg-white'
+          showGrid ? "bg-gray-50" : "bg-white"
         }`}
         style={{
           cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
