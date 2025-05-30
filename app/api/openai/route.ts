@@ -17,7 +17,12 @@ export async function POST(req: NextRequest) {
 
     if (!apiKey) {
       console.error("OPENAI_API_KEY environment variable is not set")
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: "OpenAI API key not configured. Please set the OPENAI_API_KEY environment variable.",
+        },
+        { status: 500 },
+      )
     }
 
     if (!messages || !Array.isArray(messages)) {

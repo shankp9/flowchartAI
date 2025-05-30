@@ -16,6 +16,8 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   generateEtags: false,
+  // Add output standalone for Docker
+  output: "standalone",
   // Security headers
   async headers() {
     return [

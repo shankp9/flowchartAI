@@ -221,7 +221,7 @@ export function Mermaid({
       // Pan mode or no element selected
       if (e.button === 0 && interactionMode === "pan") {
         setIsDragging(true)
-        setDragStart({ x: e.clientX - pan.x, y: e.clientY - dragStart.y })
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
         container.style.cursor = "grabbing"
         setAutoFit(false)
       }
