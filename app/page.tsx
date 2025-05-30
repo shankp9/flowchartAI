@@ -538,15 +538,31 @@ export default function Home() {
   }, [draftMessage, messages, handleSubmit])
 
   // Add this after the toggleCanvasVisibility function (around line 450)
-  const handleThemeChange = useCallback((newTheme: "default" | "neutral" | "dark" | "forest" | "base") => {
-    setCurrentTheme(newTheme)
-    setShowThemeSelector(false)
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mermaid-theme", newTheme)
-    }
-    // Force a re-render by updating a timestamp or trigger
-    setOutputCode((prev) => prev) // This will trigger the Mermaid component to re-render with new theme
-  }, [])
+  const handleThemeChange = useCallback(
+    (newTheme: "default" | "neutral" | "dark" | "forest" | "base") => {
+      setCurrentTheme(newTheme)
+      setShowThemeSelector(false)
+
+      // Save to localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem("mermaid-theme", newTheme)
+      }
+
+      // Force a complete re-render of the Mermaid component
+      if (outputCode) {
+        // Add a small delay to ensure state updates properly
+        setTimeout(() => {
+          // This will force the Mermaid component to completely re-render
+          const currentCode = outputCode
+          setOutputCode("")
+          setTimeout(() => {
+            setOutputCode(currentCode)
+          }, 50)
+        }, 50)
+      }
+    },
+    [outputCode],
+  )
 
   // Toggle functions for independent window control
   const toggleChatVisibility = () => {
@@ -893,6 +909,7 @@ export default function Home() {
           <div className="flex-1 relative overflow-hidden h-full pt-20">
             {outputCode ? (
               <Mermaid
+                key={`mermaid-${currentTheme}-${isFullscreen ? "fullscreen" : "normal"}`}
                 chart={outputCode}
                 isFullscreen={isFullscreen}
                 onFullscreenChange={setIsFullscreen}
