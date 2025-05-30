@@ -466,6 +466,9 @@ export function sanitizeMermaidCode(code: string): string {
   // Final v11.6.0 compatibility check and cleanup
   cleanedCode = ensureV11Compatibility(cleanedCode)
 
+  // Enhanced line processing to fix arrow syntax issues
+  cleanedCode = fixArrowSyntaxIssues(cleanedCode)
+
   // Remove empty lines and normalize whitespace
   cleanedCode = cleanedCode
     .split("\n")
@@ -474,6 +477,85 @@ export function sanitizeMermaidCode(code: string): string {
     .join("\n")
 
   return cleanedCode
+}
+
+function fixArrowSyntaxIssues(code: string): string {
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim()
+
+    // Skip empty lines and diagram declarations
+    if (
+      !line ||
+      line.match(/^(graph|flowchart|sequenceDiagram|classDiagram|erDiagram|journey|gantt|pie|gitGraph|stateDiagram)/i)
+    ) {
+      fixedLines.push(line)
+      continue
+    }
+
+    // Fix arrow syntax issues
+    if (line.includes("-->") || line.includes("->")) {
+      // Fix incomplete arrow labels that might cause parse errors
+      line = line.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*$/g, (match, label) => {
+        // If label is empty or just whitespace, remove the label syntax
+        if (!label || label.trim() === "") {
+          return "-->"
+        }
+        // Ensure proper label format
+        return `-->|${label.trim()}|`
+      })
+
+      // Fix malformed arrow connections
+      line = line.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*([A-Za-z0-9_]+)/g, "-->|$1| $2")
+
+      // Fix arrows without proper spacing
+      line = line.replace(/([A-Za-z0-9_\])}]+)-->/g, "$1 -->")
+      line = line.replace(/-->([A-Za-z0-9_[({]+)/g, "--> $1")
+
+      // Fix single arrows to double arrows for better compatibility
+      line = line.replace(/([A-Za-z0-9_\])}]+)\s*->\s*([A-Za-z0-9_[({]+)/g, "$1 --> $2")
+    }
+
+    // Fix sequence diagram arrow syntax
+    if (line.includes("->>") || line.includes("-->>") || line.includes("-x")) {
+      // Ensure proper spacing around sequence arrows
+      line = line.replace(/([A-Za-z0-9_]+)\s*(->>|-->>|-x)\s*([A-Za-z0-9_]+)/g, "$1 $2 $3")
+
+      // Fix message syntax
+      line = line.replace(/:\s*$/, "")
+      if (line.includes(":") && !line.match(/:\s*.+$/)) {
+        line = line.replace(/:/, ": Message")
+      }
+    }
+
+    // Remove trailing characters that might cause issues
+    line = line.replace(/[,;]\s*$/, "")
+
+    // Ensure line doesn't end with incomplete syntax
+    if (
+      line.endsWith("-->") ||
+      line.endsWith("->") ||
+      line.endsWith("->>") ||
+      line.endsWith("-->>") ||
+      line.endsWith("-x")
+    ) {
+      // If next line exists and looks like a continuation, merge them
+      if (i + 1 < lines.length && lines[i + 1].trim() && !lines[i + 1].trim().match(/^[A-Za-z0-9_]/)) {
+        const nextLine = lines[i + 1].trim()
+        line = `${line} ${nextLine}`
+        i++ // Skip the next line since we merged it
+      } else {
+        // Add a default target if arrow is incomplete
+        line = `${line} End`
+      }
+    }
+
+    fixedLines.push(line)
+  }
+
+  return fixedLines.join("\n")
 }
 
 function removeIncompatibleFeatures(code: string): string {
@@ -515,11 +597,21 @@ function cleanInvalidSyntaxV11(code: string): string {
   cleaned = cleaned.replace(/\}\s*class\s+/g, "}\n    class ")
   cleaned = cleaned.replace(/\}\s*(\w+)\s*-->/g, "}\n    $1 -->")
 
+  // Fix arrow label syntax issues
+  cleaned = cleaned.replace(/-->\s*\|\s*\|\s*/g, "--> ")
+  cleaned = cleaned.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*\n/g, "-->|$1|\n")
+
+  // Remove incomplete arrow labels
+  cleaned = cleaned.replace(/-->\s*\|\s*$/gm, "-->")
+  cleaned = cleaned.replace(/-->\s*\|([^|]*?)\s*$/gm, "-->|$1|")
+
   // Remove any remaining problematic characters for v11.6.0
   cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()\n]/g, "")
 
-  // Fix broken lines
+  // Fix broken lines and normalize spacing
   cleaned = cleaned.replace(/\n\s*\n\s*\n/g, "\n\n")
+  cleaned = cleaned.replace(/\s+\n/g, "\n")
+  cleaned = cleaned.replace(/\n\s+/g, "\n")
 
   return cleaned
 }
@@ -684,13 +776,28 @@ function fixFlowchartSyntaxV11(code: string): string {
 
     // Ensure v11.6.0 compatible arrow syntax
     if (fixedLine.includes("-->") || fixedLine.includes("---") || fixedLine.includes("-.-")) {
-      // Line already has compatible arrows
+      // Fix arrow label syntax
+      fixedLine = fixedLine.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*([A-Za-z0-9_[({]+)/g, "-->|$1| $2")
+      fixedLine = fixedLine.replace(/-->\s*\|\s*\|\s*/g, "--> ")
+
+      // Ensure proper spacing
+      fixedLine = fixedLine.replace(/([A-Za-z0-9_\])}]+)-->/g, "$1 -->")
+      fixedLine = fixedLine.replace(/-->([A-Za-z0-9_[({]+)/g, "--> $1")
+
       fixedLines.push(fixedLine)
     } else if (fixedLine.includes("->") && !fixedLine.includes("-->")) {
       // Convert single arrow to double arrow for v11.6.0
       fixedLine = fixedLine.replace(/->/g, "-->")
+      fixedLine = fixedLine.replace(/([A-Za-z0-9_\])}]+)-->/g, "$1 -->")
+      fixedLine = fixedLine.replace(/-->([A-Za-z0-9_[({]+)/g, "--> $1")
       fixedLines.push(fixedLine)
-    } else if (fixedLine.match(/^\s*\w+.*\w+\s*$/)) {
+    } else if (
+      fixedLine.match(/^\s*\w+.*\w+\s*$/) &&
+      !fixedLine.includes("-->") &&
+      !fixedLine.includes("[") &&
+      !fixedLine.includes("{") &&
+      !fixedLine.includes("(")
+    ) {
       // Line might be missing arrows between nodes
       const parts = fixedLine.split(/\s+/)
       if (parts.length >= 2) {
