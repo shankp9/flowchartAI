@@ -7,7 +7,6 @@ import { Suspense } from "react"
 import { Mona_Sans as FontSans } from "next/font/google"
 import { cn } from "@/lib/utils"
 import { SiteHeader } from "@/components/SiteHeader"
-import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata = {
   title: "FlowchartAI - AI-Powered Diagram Generator",
@@ -37,19 +36,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn("min-h-screen bg-background font-sans antialiased flex flex-col", fontSans.variable)}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          <Suspense
-            fallback={
-              <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            }
-          >
-            <SiteHeader />
-            {children}
-          </Suspense>
-          <Analytics />
-        </ThemeProvider>
+        <Suspense
+          fallback={
+            <div className="min-h-screen flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          }
+        >
+          <SiteHeader />
+          {children}
+        </Suspense>
+        <Analytics />
       </body>
     </html>
   )

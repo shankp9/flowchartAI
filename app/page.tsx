@@ -1,21 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAtom } from "jotai"
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Lightbulb, Sparkles } from "lucide-react"
 
-import { modelAtom } from "@/lib/atom"
 import { Mermaid } from "@/components/Mermaids"
 import { ChatInput } from "@/components/ChatInput"
 import { ChatMessage } from "@/components/ChatMessage"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { Message, RequestBody } from "@/types/type"
+import type { Message } from "@/types/type"
 import { parseCodeFromMessage } from "@/lib/utils"
 
 export default function Home() {
-  const [model] = useAtom(modelAtom)
   const [draftMessage, setDraftMessage] = useState<string>("")
   const [messages, setMessages] = useState<Message[]>([])
   const [draftOutputCode, setDraftOutputCode] = useState<string>("")
@@ -103,14 +100,15 @@ export default function Home() {
     setIsLoading(true)
 
     try {
-      const body: RequestBody = { messages: newMessages, model }
-
       const response = await fetch("/api/openai", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          messages: newMessages,
+          model: "gpt-3.5-turbo",
+        }),
       })
 
       if (!response.ok) {
@@ -164,14 +162,15 @@ export default function Home() {
     setIsLoading(true)
 
     try {
-      const body: RequestBody = { messages: newMessages, model }
-
       const response = await fetch("/api/openai", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          messages: newMessages,
+          model: "gpt-3.5-turbo",
+        }),
       })
 
       if (!response.ok) {

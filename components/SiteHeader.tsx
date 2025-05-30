@@ -1,6 +1,5 @@
 import { siteConfig } from "@/config/site"
 import { MainNav } from "@/components/MainNav"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Github } from "lucide-react"
 
@@ -17,7 +16,6 @@ export function SiteHeader() {
               <span className="hidden sm:inline">GitHub</span>
             </a>
           </Button>
-          <ThemeToggle />
         </div>
       </div>
     </header>
