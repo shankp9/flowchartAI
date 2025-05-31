@@ -1,279 +1,249 @@
-import { type ClassValue, clsx } from "clsx"
+import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { ValidationResult } from "@/types/type"
 
+// Helper function to combine Tailwind CSS classes
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Parse Mermaid code from AI response
+// Function to serialize code for mermaid.live links
+export function serializeCode(code: string): string {
+  try {
+    // Create a JSON object with the code
+    const jsonData = {
+      code: code,
+      mermaid: {
+        theme: "default",
+      },
+    }
+
+    // Convert to base64 for URL-safe encoding
+    if (typeof window !== "undefined") {
+      // Browser environment
+      return btoa(JSON.stringify(jsonData))
+    } else {
+      // Node.js environment
+      return Buffer.from(JSON.stringify(jsonData)).toString("base64")
+    }
+  } catch (error) {
+    console.error("Error serializing mermaid code:", error)
+    // Fallback to simple URL encoding
+    return encodeURIComponent(code)
+  }
+}
+
+// Function to parse mermaid code from AI-generated messages
 export function parseCodeFromMessage(message: string): string {
-  // Look for code blocks with mermaid, graph, or other diagram types
-  const codeBlockRegex =
-    /```(?:mermaid|graph|flowchart|sequence|gantt|pie|class|state|er|journey|mindmap|timeline|sankey|c4)?\s*\n?([\s\S]*?)\n?```/gi
-  const match = codeBlockRegex.exec(message)
+  // Try to extract code between \`\`\`mermaid and \`\`\` tags
+  const mermaidRegex = /```(?:mermaid)?\s*([\s\S]*?)```/
+  const match = message.match(mermaidRegex)
 
   if (match && match[1]) {
     return match[1].trim()
   }
 
-  // If no code block found, try to extract diagram syntax directly
-  const lines = message.split("\n")
-  const diagramStart = lines.findIndex((line) =>
-    line
-      .trim()
-      .match(
-        /^(graph|flowchart|sequenceDiagram|gantt|pie|classDiagram|stateDiagram|erDiagram|journey|mindmap|timeline|sankey|C4Context|C4Container|C4Component|C4Dynamic)/i,
-      ),
-  )
-
-  if (diagramStart !== -1) {
-    return lines.slice(diagramStart).join("\n").trim()
-  }
-
+  // If no mermaid code block found, return the original message
   return message.trim()
 }
 
-// Sanitize Mermaid code for v11.6.0 compatibility
+// Function to sanitize mermaid code for v11.6.0 compatibility
 export function sanitizeMermaidCode(code: string): string {
-  if (!code || typeof code !== "string") {
-    return ""
-  }
+  if (!code) return ""
 
   let sanitized = code.trim()
 
-  // Remove any markdown code block markers
-  sanitized = sanitized.replace(/^```(?:mermaid|graph|flowchart)?\s*\n?/gi, "")
-  sanitized = sanitized.replace(/\n?```\s*$/gi, "")
+  // Fix common syntax issues
+  sanitized = fixDiagramDeclarations(sanitized)
+  sanitized = fixQuotesAndEscapeCharacters(sanitized)
+  sanitized = fixBracketBalancing(sanitized)
+  sanitized = fixArrowSyntax(sanitized)
+  sanitized = fixSequenceDiagramNewlineIssues(sanitized)
 
-  // Fix common v11.6.0 syntax issues
-  sanitized = fixMermaidV11Syntax(sanitized)
-
-  // Escape special characters in labels
-  sanitized = escapeSpecialCharacters(sanitized)
-
-  // Fix bracket mismatches
-  sanitized = fixBracketMismatches(sanitized)
-
-  // Remove duplicate whitespace and normalize line endings
-  sanitized = sanitized.replace(/\r\n/g, "\n")
-  sanitized = sanitized.replace(/\n\s*\n\s*\n/g, "\n\n")
-  sanitized = sanitized.replace(/[ \t]+/g, " ")
-
-  // Ensure proper diagram declaration
-  sanitized = ensureProperDiagramDeclaration(sanitized)
-
-  return sanitized.trim()
+  return sanitized
 }
 
-// Fix Mermaid v11.6.0 specific syntax issues
-function fixMermaidV11Syntax(code: string): string {
-  let fixed = code
+// Function to fix diagram declarations
+function fixDiagramDeclarations(code: string): string {
+  const firstLine = code.split("\n")[0].toLowerCase().trim()
 
-  // Fix flowchart syntax
-  fixed = fixed.replace(/^graph\s+(TD|TB|BT|RL|LR)/gm, "flowchart $1")
-
-  // Fix sequence diagram syntax
-  fixed = fixed.replace(/^sequenceDiagram\s*$/gm, "sequenceDiagram")
-
-  // Fix class diagram syntax
-  fixed = fixed.replace(/^classDiagram\s*$/gm, "classDiagram")
-
-  // Fix state diagram syntax
-  fixed = fixed.replace(/^stateDiagram\s*$/gm, "stateDiagram-v2")
-
-  // Fix ER diagram syntax
-  fixed = fixed.replace(/^erDiagram\s*$/gm, "erDiagram")
-
-  // Fix journey syntax
-  fixed = fixed.replace(/^journey\s*$/gm, "journey")
-
-  // Fix mindmap syntax
-  fixed = fixed.replace(/^mindmap\s*$/gm, "mindmap")
-
-  // Fix timeline syntax
-  fixed = fixed.replace(/^timeline\s*$/gm, "timeline")
-
-  // Fix sankey syntax
-  fixed = fixed.replace(/^sankey-beta\s*$/gm, "sankey-beta")
-
-  // Fix C4 diagram syntax
-  fixed = fixed.replace(/^C4Context\s*$/gm, "C4Context")
-  fixed = fixed.replace(/^C4Container\s*$/gm, "C4Container")
-  fixed = fixed.replace(/^C4Component\s*$/gm, "C4Component")
-  fixed = fixed.replace(/^C4Dynamic\s*$/gm, "C4Dynamic")
-
-  return fixed
-}
-
-// Escape special characters in labels
-function escapeSpecialCharacters(code: string): string {
-  let escaped = code
-
-  // Escape HTML entities in labels
-  escaped = escaped.replace(/([A-Za-z0-9_]+)\[([^\]]*[<>&][^\]]*)\]/g, (match, nodeId, label) => {
-    const escapedLabel = label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    return `${nodeId}[${escapedLabel}]`
-  })
-
-  // Escape quotes in labels
-  escaped = escaped.replace(/([A-Za-z0-9_]+)\[([^\]]*"[^\]]*)\]/g, (match, nodeId, label) => {
-    const escapedLabel = label.replace(/"/g, "&quot;")
-    return `${nodeId}[${escapedLabel}]`
-  })
-
-  return escaped
-}
-
-// Fix bracket mismatches
-function fixBracketMismatches(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines = lines.map((line) => {
-    // Count brackets in each line
-    const openBrackets = (line.match(/\[/g) || []).length
-    const closeBrackets = (line.match(/\]/g) || []).length
-    const openParens = (line.match(/\(/g) || []).length
-    const closeParens = (line.match(/\)/g) || []).length
-    const openBraces = (line.match(/\{/g) || []).length
-    const closeBraces = (line.match(/\}/g) || []).length
-
-    let fixed = line
-
-    // Fix missing closing brackets
-    if (openBrackets > closeBrackets) {
-      fixed += "]".repeat(openBrackets - closeBrackets)
+  // Fix flowchart/graph declarations
+  if (firstLine.startsWith("flowchart") || firstLine.startsWith("graph")) {
+    // Ensure proper spacing after declaration
+    if (!/^(flowchart|graph)\s+(TB|TD|BT|RL|LR)/.test(firstLine)) {
+      code = code.replace(/^(flowchart|graph)(\s*)/, "$1 TD")
     }
+  }
 
-    // Fix missing closing parentheses
-    if (openParens > closeParens) {
-      fixed += ")".repeat(openParens - closeParens)
-    }
+  // Fix sequence diagram declarations
+  if (firstLine.includes("sequence") && !firstLine.startsWith("sequencediagram")) {
+    code = code.replace(/^.*sequence.*$/i, "sequenceDiagram")
+  }
 
-    // Fix missing closing braces
-    if (openBraces > closeBraces) {
-      fixed += "}".repeat(openBraces - closeBraces)
-    }
-
-    return fixed
-  })
-
-  return fixedLines.join("\n")
-}
-
-// Ensure proper diagram declaration
-function ensureProperDiagramDeclaration(code: string): string {
-  const lines = code.split("\n").filter((line) => line.trim())
-  if (lines.length === 0) return code
-
-  const firstLine = lines[0].trim().toLowerCase()
-
-  // Check if first line is a valid diagram declaration
-  const validDeclarations = [
-    "flowchart",
-    "graph",
-    "sequencediagram",
-    "gantt",
-    "pie",
-    "classDiagram",
-    "statediagram",
-    "statediagram-v2",
-    "erdiagram",
-    "journey",
-    "mindmap",
-    "timeline",
-    "sankey-beta",
-    "c4context",
-    "c4container",
-    "c4component",
-    "c4dynamic",
-  ]
-
-  const hasValidDeclaration = validDeclarations.some((decl) => firstLine.startsWith(decl))
-
-  if (!hasValidDeclaration) {
-    // Try to detect diagram type from content
-    const content = code.toLowerCase()
-
-    if (content.includes("participant") || content.includes("->") || content.includes("->>")) {
-      return `sequenceDiagram\n${code}`
-    } else if (content.includes("section") || content.includes("dateformat")) {
-      return `gantt\n${code}`
-    } else if (content.includes("pie") || content.includes("title")) {
-      return `pie title Chart\n${code}`
-    } else if (content.includes("class") || content.includes("inheritance")) {
-      return `classDiagram\n${code}`
-    } else if (content.includes("state") || content.includes("[*]")) {
-      return `stateDiagram-v2\n${code}`
-    } else if (content.includes("entity") || content.includes("relationship")) {
-      return `erDiagram\n${code}`
-    } else if (content.includes("journey") || content.includes("section")) {
-      return `journey\n${code}`
-    } else {
-      // Default to flowchart
-      return `flowchart TD\n${code}`
-    }
+  // Fix class diagram declarations
+  if (firstLine.includes("class") && !firstLine.startsWith("classDiagram")) {
+    code = code.replace(/^.*class.*diagram.*$/i, "classDiagram")
   }
 
   return code
 }
 
-// Validate Mermaid code syntax
-export function validateMermaidCode(code: string): ValidationResult {
-  const errors: string[] = []
+// Function to fix quotes and escape special characters
+function fixQuotesAndEscapeCharacters(code: string): string {
+  let result = code
 
-  if (!code || typeof code !== "string") {
-    errors.push("Empty or invalid code")
-    return { isValid: false, errors }
+  // Replace unescaped HTML entities
+  result = result.replace(/(?<!\\)</g, "&lt;")
+  result = result.replace(/(?<!\\)>/g, "&gt;")
+  result = result.replace(/(?<!\\)&(?!lt;|gt;|amp;|quot;|#\d+;)/g, "&amp;")
+
+  // Fix unclosed quotes in node labels
+  const labelRegex = /\[([^\]]*)\]/g
+  result = result.replace(labelRegex, (match, label) => {
+    // Count quotes in the label
+    const quoteCount = (label.match(/"/g) || []).length
+    if (quoteCount % 2 !== 0) {
+      // Odd number of quotes, add one more
+      return `[${label}"]`
+    }
+    return match
+  })
+
+  return result
+}
+
+// Function to fix bracket balancing
+function fixBracketBalancing(code: string): string {
+  const brackets = {
+    "[": "]",
+    "(": ")",
+    "{": "}",
   }
 
-  const trimmedCode = code.trim()
-  if (trimmedCode.length === 0) {
+  const lines = code.split("\n")
+  const fixedLines = lines.map((line) => {
+    // Skip comment lines
+    if (line.trim().startsWith("%%")) return line
+
+    // Count brackets
+    const stack: string[] = []
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      if (char === "[" || char === "(" || char === "{") {
+        stack.push(char)
+      } else if (char === "]" || char === ")" || char === "}") {
+        if (stack.length === 0) {
+          // Extra closing bracket, ignore
+          line = line.slice(0, i) + line.slice(i + 1)
+          i--
+        } else {
+          const last = stack.pop()
+          const expected = brackets[last as keyof typeof brackets]
+          if (char !== expected) {
+            // Mismatched bracket, replace with correct one
+            line = line.slice(0, i) + expected + line.slice(i + 1)
+          }
+        }
+      }
+    }
+
+    // Add missing closing brackets
+    while (stack.length > 0) {
+      const last = stack.pop()
+      const expected = brackets[last as keyof typeof brackets]
+      line += expected
+    }
+
+    return line
+  })
+
+  return fixedLines.join("\n")
+}
+
+// Function to fix arrow syntax
+function fixArrowSyntax(code: string): string {
+  let result = code
+
+  // Fix incorrect arrow syntax
+  result = result.replace(/--(?!>|\|)/g, "-->")
+  result = result.replace(/==(?!>|\|)/g, "==>")
+  result = result.replace(/~~(?!>|\|)/g, "~~>")
+
+  // Fix missing arrow heads
+  result = result.replace(/(-+|=+|~+)(?!>|\|)/g, "$1>")
+
+  return result
+}
+
+// Function to fix sequence diagram newline issues
+export function fixSequenceDiagramNewlineIssues(code: string): string {
+  if (!code.toLowerCase().includes("sequencediagram")) return code
+
+  // Fix note syntax
+  let result = code.replace(/Note (left|right|over) of ([^:]+)(?!:)/g, "Note $1 of $2:")
+
+  // Fix participant declarations
+  result = result.replace(/participant ([^\s]+)(?!as)/g, "participant $1 as $1")
+
+  return result
+}
+
+// Function to validate mermaid code
+export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = []
+
+  if (!code || code.trim().length === 0) {
     errors.push("Empty diagram code")
     return { isValid: false, errors }
   }
 
-  // Check for valid diagram declaration
-  const lines = trimmedCode.split("\n").filter((line) => line.trim())
-  if (lines.length === 0) {
-    errors.push("No content found")
-    return { isValid: false, errors }
-  }
-
-  const firstLine = lines[0].trim().toLowerCase()
-  const validDeclarations = [
-    "flowchart",
+  // Check for valid diagram type
+  const firstLine = code.split("\n")[0].toLowerCase().trim()
+  const validDiagramTypes = [
     "graph",
+    "flowchart",
     "sequencediagram",
+    "classDiagram",
+    "stateDiagram",
+    "erDiagram",
+    "journey",
     "gantt",
     "pie",
-    "classDiagram",
-    "statediagram",
-    "statediagram-v2",
-    "erdiagram",
-    "journey",
+    "gitGraph",
     "mindmap",
     "timeline",
-    "sankey-beta",
-    "c4context",
-    "c4container",
-    "c4component",
-    "c4dynamic",
   ]
 
-  const hasValidDeclaration = validDeclarations.some((decl) => firstLine.startsWith(decl))
-  if (!hasValidDeclaration) {
-    errors.push("Missing or invalid diagram type declaration")
-  }
-
-  // Check for basic syntax issues
-  const bracketBalance = checkBracketBalance(trimmedCode)
-  if (!bracketBalance.isBalanced) {
-    errors.push(`Unbalanced brackets: ${bracketBalance.error}`)
+  const hasDiagramType = validDiagramTypes.some((type) => firstLine.startsWith(type))
+  if (!hasDiagramType) {
+    errors.push("Invalid or missing diagram type declaration")
   }
 
   // Check for common syntax errors
-  const syntaxErrors = checkCommonSyntaxErrors(trimmedCode)
-  errors.push(...syntaxErrors)
+  if (code.includes("Error:") || code.includes("error:")) {
+    errors.push("Error message found in diagram code")
+  }
+
+  // Check for balanced brackets
+  const bracketPairs = [
+    ["[", "]"],
+    ["(", ")"],
+    ["{", "}"],
+  ]
+
+  for (const [open, close] of bracketPairs) {
+    const openCount = (code.match(new RegExp(`\\${open}`, "g")) || []).length
+    const closeCount = (code.match(new RegExp(`\\${close}`, "g")) || []).length
+
+    if (openCount !== closeCount) {
+      errors.push(`Unbalanced ${open}${close} brackets: ${openCount} opening vs ${closeCount} closing`)
+    }
+  }
+
+  // Check for invalid arrows
+  const invalidArrows = code.match(/(-{2,}|={2,}|~{2,})(?![>|])/g)
+  if (invalidArrows && invalidArrows.length > 0) {
+    errors.push("Invalid arrow syntax detected")
+  }
 
   return {
     isValid: errors.length === 0,
@@ -281,172 +251,107 @@ export function validateMermaidCode(code: string): ValidationResult {
   }
 }
 
-// Check bracket balance
-function checkBracketBalance(code: string): { isBalanced: boolean; error?: string } {
-  const brackets = { "[": "]", "(": ")", "{": "}" }
-  const stack: string[] = []
-
-  for (const char of code) {
-    if (char in brackets) {
-      stack.push(char)
-    } else if (Object.values(brackets).includes(char)) {
-      const last = stack.pop()
-      if (!last || brackets[last as keyof typeof brackets] !== char) {
-        return { isBalanced: false, error: `Mismatched ${char}` }
-      }
-    }
-  }
-
-  if (stack.length > 0) {
-    return { isBalanced: false, error: `Unclosed ${stack[stack.length - 1]}` }
-  }
-
-  return { isBalanced: true }
-}
-
-// Check for common syntax errors
-function checkCommonSyntaxErrors(code: string): string[] {
-  const errors: string[] = []
-  const lines = code.split("\n")
-
-  lines.forEach((line, index) => {
-    const trimmedLine = line.trim()
-    if (!trimmedLine) return
-
-    // Check for invalid characters in node IDs
-    const nodeIdMatch = trimmedLine.match(/^([A-Za-z0-9_]+)/)
-    if (nodeIdMatch && /[^A-Za-z0-9_]/.test(nodeIdMatch[1])) {
-      errors.push(`Line ${index + 1}: Invalid characters in node ID "${nodeIdMatch[1]}"`)
-    }
-
-    // Check for missing arrows in connections
-    if (trimmedLine.includes("-->") || trimmedLine.includes("->") || trimmedLine.includes("->>")) {
-      // Valid connection syntax
-    } else if (trimmedLine.includes(" - ") && !trimmedLine.includes("--")) {
-      errors.push(`Line ${index + 1}: Possible missing arrow in connection`)
-    }
-  })
-
-  return errors
-}
-
-// Generate context-aware suggestions
-export function generateContextAwareSuggestions(code: string, diagramType: string): string[] {
-  const suggestions: string[] = []
-
-  switch (diagramType) {
-    case "flowchart":
-    case "graph":
-      suggestions.push(
-        "Add decision points with diamond shapes",
-        "Include error handling paths",
-        "Add styling with CSS classes",
-      )
-      break
-    case "sequence":
-      suggestions.push("Add activation boxes for lifelines", "Include error scenarios", "Add notes for clarification")
-      break
-    case "class":
-      suggestions.push(
-        "Add method parameters and return types",
-        "Include inheritance relationships",
-        "Add interface implementations",
-      )
-      break
-    case "state":
-      suggestions.push("Add transition conditions", "Include composite states", "Add entry/exit actions")
-      break
-    case "er":
-      suggestions.push("Add relationship cardinalities", "Include attribute types", "Add foreign key relationships")
-      break
-    case "gantt":
-      suggestions.push("Add task dependencies", "Include milestones", "Add resource assignments")
-      break
-    case "journey":
-      suggestions.push("Add emotional ratings", "Include touchpoints", "Add pain points")
-      break
-    default:
-      suggestions.push("Add more detail to the diagram", "Include additional connections", "Add descriptive labels")
-  }
-
-  return suggestions
-}
-
-// Detect diagram type from code
+// Function to detect diagram type from code
 export function detectDiagramTypeFromCode(code: string): string {
-  const firstLine = code.trim().split("\n")[0].toLowerCase()
+  const firstLine = code.split("\n")[0].toLowerCase().trim()
 
-  if (firstLine.startsWith("flowchart") || firstLine.startsWith("graph")) {
+  if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
     return "flowchart"
   } else if (firstLine.startsWith("sequencediagram")) {
     return "sequence"
   } else if (firstLine.startsWith("classDiagram")) {
     return "class"
-  } else if (firstLine.startsWith("statediagram")) {
+  } else if (firstLine.startsWith("stateDiagram")) {
     return "state"
-  } else if (firstLine.startsWith("erdiagram")) {
+  } else if (firstLine.startsWith("erDiagram")) {
     return "er"
+  } else if (firstLine.startsWith("journey")) {
+    return "journey"
   } else if (firstLine.startsWith("gantt")) {
     return "gantt"
   } else if (firstLine.startsWith("pie")) {
     return "pie"
-  } else if (firstLine.startsWith("journey")) {
-    return "journey"
+  } else if (firstLine.startsWith("gitGraph")) {
+    return "git"
   } else if (firstLine.startsWith("mindmap")) {
     return "mindmap"
   } else if (firstLine.startsWith("timeline")) {
     return "timeline"
-  } else if (firstLine.startsWith("sankey")) {
-    return "sankey"
-  } else if (firstLine.startsWith("c4")) {
-    return "c4"
   }
 
-  // Try to detect from content
-  const content = code.toLowerCase()
-  if (content.includes("participant") || content.includes("->") || content.includes("->>")) {
-    return "sequence"
-  } else if (content.includes("class") || content.includes("inheritance")) {
-    return "class"
-  } else if (content.includes("state") || content.includes("[*]")) {
-    return "state"
-  } else if (content.includes("entity") || content.includes("relationship")) {
-    return "er"
-  } else if (content.includes("section") && content.includes("dateformat")) {
-    return "gantt"
-  } else if (content.includes("pie") && content.includes("title")) {
-    return "pie"
-  } else if (content.includes("journey") && content.includes("section")) {
-    return "journey"
-  }
-
-  return "flowchart" // default
+  return "unknown"
 }
 
-// Fix sequence diagram newline issues (legacy function for compatibility)
-export function fixSequenceDiagramNewlineIssues(code: string): string {
-  return sanitizeMermaidCode(code)
-}
+// Function to generate context-aware suggestions based on diagram type
+export function generateContextAwareSuggestions(code: string, diagramType: string): string[] {
+  const suggestions: string[] = []
 
-// Serialize code for external links (like mermaid.live)
-export function serializeCode(code: string): string {
-  try {
-    // Create a simple base64 encoding for the code
-    const jsonString = JSON.stringify({
-      code: code,
-      mermaid: { theme: "default" },
-    })
+  switch (diagramType) {
+    case "flowchart":
+      suggestions.push("Add a decision node with multiple paths")
+      suggestions.push("Add styling to highlight important nodes")
+      suggestions.push("Add a subgraph to group related nodes")
+      break
 
-    // Use btoa for base64 encoding (available in browsers)
-    if (typeof btoa !== "undefined") {
-      return btoa(jsonString)
-    }
+    case "sequence":
+      suggestions.push("Add a loop or alt section to show conditional flows")
+      suggestions.push("Add notes to explain important interactions")
+      suggestions.push("Add more participants to show a complete interaction")
+      break
 
-    // Fallback for server-side rendering
-    return Buffer.from(jsonString).toString("base64")
-  } catch (error) {
-    console.error("Error serializing code:", error)
-    // Return a simple URL-encoded version as fallback
-    return encodeURIComponent(code)
+    case "class":
+      suggestions.push("Add relationships between classes (inheritance, composition)")
+      suggestions.push("Add methods and properties to classes")
+      suggestions.push("Group related classes with annotations")
+      break
+
+    case "state":
+      suggestions.push("Add transition conditions between states")
+      suggestions.push("Add nested states to show hierarchical behavior")
+      suggestions.push("Add entry/exit actions to states")
+      break
+
+    case "journey":
+      suggestions.push("Add more detailed steps to the user journey")
+      suggestions.push("Add satisfaction ratings to each step")
+      suggestions.push("Add another journey section for a different user path")
+      break
+
+    case "gantt":
+      suggestions.push("Add dependencies between tasks")
+      suggestions.push("Add milestones to mark important dates")
+      suggestions.push("Group tasks into sections by team or phase")
+      break
+
+    case "er":
+      suggestions.push("Add cardinality to relationships")
+      suggestions.push("Add more attributes to entities")
+      suggestions.push("Add additional entities to complete the data model")
+      break
+
+    case "pie":
+      suggestions.push("Add percentage values to slices")
+      suggestions.push("Add a title to explain the chart's purpose")
+      suggestions.push("Group smaller slices into an 'Other' category")
+      break
+
+    case "mindmap":
+      suggestions.push("Add more branches to expand your ideas")
+      suggestions.push("Add a second level of nodes to provide more detail")
+      suggestions.push("Use different node shapes to categorize ideas")
+      break
+
+    case "timeline":
+      suggestions.push("Add more events to complete the timeline")
+      suggestions.push("Add sections to group related events")
+      suggestions.push("Add dates to provide better context")
+      break
+
+    default:
+      suggestions.push("Add more nodes to expand your diagram")
+      suggestions.push("Add styling to highlight important elements")
+      suggestions.push("Add a title or description to explain the diagram")
   }
+
+  return suggestions
 }
