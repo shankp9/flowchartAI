@@ -2,8 +2,9 @@ import type React from "react"
 import "./globals.css"
 import { Analytics } from "@vercel/analytics/react"
 import { Suspense } from "react"
+import type { Metadata } from "next"
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "FlowchartAI - AI-Powered Diagram Generator",
   description: "Create professional diagrams using natural language with AI",
   generator: "v0.dev",

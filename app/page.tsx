@@ -76,7 +76,7 @@ export default function Home() {
   // Enhanced retry state
   const [retryAttempts, setRetryAttempts] = useState(0)
   const [retryHistory, setRetryHistory] = useState<string[]>([])
-  const [isRetrying, setIsRetrying] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(isRetrying)
 
   // Add this after the existing state declarations (around line 60)
   const [currentTheme, setCurrentTheme] = useState<"default" | "neutral" | "dark" | "forest" | "base">("default")

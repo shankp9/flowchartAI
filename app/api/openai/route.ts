@@ -1,7 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+interface RequestBody {
+  messages: Array<{
+    role: string
+    content: string
+  }>
+  model?: string
+  retryAttempt?: number
+  previousErrors?: string[]
+  currentDiagram?: string
+  isModification?: boolean
+  diagramType?: string | null
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const body: RequestBody = await req.json()
     const {
       messages,
       model = "gpt-3.5-turbo",
@@ -10,7 +24,7 @@ export async function POST(req: NextRequest) {
       currentDiagram = "",
       isModification = false,
       diagramType = null,
-    } = await req.json()
+    } = body
 
     // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY

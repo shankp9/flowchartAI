@@ -36,6 +36,7 @@ interface MermaidProps {
   toggleChatVisibility?: () => void
   toggleCanvasVisibility?: () => void
   chatVisible?: boolean
+  theme?: Theme
 }
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
@@ -78,11 +79,12 @@ export function Mermaid({
   toggleChatVisibility = () => {},
   toggleCanvasVisibility = () => {},
   chatVisible = false,
+  theme: propTheme,
 }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string>("Copy SVG")
-  const [theme, setTheme] = useState<Theme>("default")
+  const [theme, setTheme] = useState<Theme>(propTheme || "default")
   const [isClient, setIsClient] = useState(false)
   const [isRendering, setIsRendering] = useState(false)
   const [error, setError] = useState<string>("")
@@ -137,34 +139,38 @@ export function Mermaid({
     window.addEventListener("resize", handleResize)
 
     // Initialize mermaid with responsive settings
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "loose",
-      theme: "default",
-      logLevel: "error",
-      flowchart: {
-        useMaxWidth: false,
-        htmlLabels: true,
-        curve: "basis",
-      },
-      journey: {
-        useMaxWidth: false,
-      },
-      sequence: {
-        useMaxWidth: false,
-        showSequenceNumbers: true,
-        wrap: true,
-        width: screenSize === "mobile" ? 120 : 150,
-      },
-      gantt: {
-        useMaxWidth: false,
-      },
-    })
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+        theme: "default",
+        logLevel: "error",
+        flowchart: {
+          useMaxWidth: false,
+          htmlLabels: true,
+          curve: "basis",
+        },
+        journey: {
+          useMaxWidth: false,
+        },
+        sequence: {
+          useMaxWidth: false,
+          showSequenceNumbers: true,
+          wrap: true,
+          width: screenSize === "mobile" ? 120 : 150,
+        },
+        gantt: {
+          useMaxWidth: false,
+        },
+      })
+    } catch (error) {
+      console.warn("Mermaid initialization error:", error)
+    }
 
     return () => {
       window.removeEventListener("resize", handleResize)
     }
-  }, [isFullscreen, isStandalone, screenSize])
+  }, [])
 
   // Auto-adjust controls visibility based on fullscreen mode
   useEffect(() => {
@@ -671,9 +677,13 @@ export function Mermaid({
           } catch (renderError) {
             console.warn("Initial render failed, attempting with simplified syntax:", renderError)
             const simplifiedCode = createSimplifiedDiagram(cleanedCode)
-            const simplifiedResult = await mermaid.render(id + "_simplified", simplifiedCode)
-            svg = simplifiedResult.svg
-            setWasFixed(true)
+            try {
+              const simplifiedResult = await mermaid.render(id + "_simplified", simplifiedCode)
+              svg = simplifiedResult.svg
+              setWasFixed(true)
+            } catch (simplifiedError) {
+              throw new Error(`Rendering failed: ${simplifiedError}`)
+            }
           }
 
           // Create wrapper with better error handling
@@ -907,6 +917,12 @@ export function Mermaid({
       }
     }
   }, [chart, theme, isClient, renderChart])
+
+  useEffect(() => {
+    if (propTheme && propTheme !== theme) {
+      setTheme(propTheme)
+    }
+  }, [propTheme, theme])
 
   const handleThemeChange = useCallback(
     async (newTheme: Theme) => {
