@@ -41,7 +41,6 @@ interface MermaidProps {
 
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
-// Enhanced theme configurations with canvas backgrounds
 const ThemeConfigs = {
   default: {
     name: "Default",
@@ -92,9 +91,9 @@ export function Mermaid({
   const [sanitizedCode, setSanitizedCode] = useState("")
   const [wasFixed, setWasFixed] = useState(false)
   const [wasConverted, setWasConverted] = useState(false)
-  const [showGrid, setShowGrid] = useState(false) // Declare showGrid variable
+  const [showGrid, setShowGrid] = useState(false)
 
-  // Enhanced zoom and pan state with better control
+  // Enhanced zoom and pan state
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -102,20 +101,17 @@ export function Mermaid({
   const [showControls, setShowControls] = useState(isFullscreen)
   const [autoFit, setAutoFit] = useState(true)
 
-  // Enhanced interaction state
   const [isElementDragging, setIsElementDragging] = useState(false)
   const [selectedElement, setSelectedElement] = useState<Element | null>(null)
   const [interactionMode, setInteractionMode] = useState<"pan" | "select">("pan")
 
-  // New states for enhanced functionality
   const [showThemeSelector, setShowThemeSelector] = useState(false)
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
 
-  // Responsive breakpoints
   const [screenSize, setScreenSize] = useState<"mobile" | "tablet" | "desktop">("desktop")
 
-  // Initialize client-side state and responsive handling
+  // Initialize client-side state
   useEffect(() => {
     setIsClient(true)
     const savedTheme = localStorage.getItem("mermaid-theme")
@@ -123,7 +119,6 @@ export function Mermaid({
       setTheme(savedTheme as Theme)
     }
 
-    // Handle responsive breakpoints
     const handleResize = () => {
       const width = window.innerWidth
       if (width < 768) {
@@ -138,7 +133,7 @@ export function Mermaid({
     handleResize()
     window.addEventListener("resize", handleResize)
 
-    // Initialize mermaid with responsive settings
+    // Initialize mermaid for v11.6.0
     try {
       mermaid.initialize({
         startOnLoad: false,
@@ -150,9 +145,6 @@ export function Mermaid({
           htmlLabels: true,
           curve: "basis",
         },
-        journey: {
-          useMaxWidth: false,
-        },
         sequence: {
           useMaxWidth: false,
           showSequenceNumbers: true,
@@ -161,6 +153,20 @@ export function Mermaid({
         },
         gantt: {
           useMaxWidth: false,
+        },
+        // v11.6.0 specific configurations
+        mindmap: {
+          useMaxWidth: false,
+        },
+        timeline: {
+          useMaxWidth: false,
+        },
+        sankey: {
+          useMaxWidth: false,
+        },
+        c4: {
+          useMaxWidth: false,
+          diagramPadding: 20,
         },
       })
     } catch (error) {
@@ -172,12 +178,12 @@ export function Mermaid({
     }
   }, [])
 
-  // Auto-adjust controls visibility based on fullscreen mode
+  // Auto-adjust controls visibility
   useEffect(() => {
     setShowControls(isFullscreen)
   }, [isFullscreen])
 
-  // Enhanced mouse and touch interactions with better zoom control
+  // Enhanced mouse and touch interactions
   useEffect(() => {
     const container = svgContainerRef.current
     if (!container) return
@@ -189,19 +195,15 @@ export function Mermaid({
       e.preventDefault()
       e.stopPropagation()
 
-      // Reduced zoom sensitivity to 30% of original
       const zoomSensitivity = screenSize === "mobile" ? 0.015 : 0.03
       const delta = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity
 
-      // Get mouse position relative to container
       const rect = container.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      // Calculate new zoom with limits
       const newZoom = Math.max(0.1, Math.min(5, zoom + delta))
 
-      // Calculate new pan to zoom towards mouse position
       const zoomRatio = newZoom / zoom
       const newPanX = mouseX - (mouseX - pan.x) * zoomRatio
       const newPanY = mouseY - (mouseY - pan.y) * zoomRatio
@@ -214,7 +216,6 @@ export function Mermaid({
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target as Element
 
-      // Check if clicking on a diagram element
       if (target.closest("g[class*='node'], g[class*='edgePath'], g[class*='actor'], g[class*='rect']")) {
         if (interactionMode === "select") {
           setSelectedElement(target.closest("g") as Element)
@@ -224,7 +225,6 @@ export function Mermaid({
         }
       }
 
-      // Pan mode or no element selected
       if (e.button === 0 && interactionMode === "pan") {
         setIsDragging(true)
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
@@ -240,12 +240,6 @@ export function Mermaid({
           y: e.clientY - dragStart.y,
         })
       } else if (isElementDragging && selectedElement) {
-        // Handle element dragging (visual feedback only for now)
-        const rect = container.getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-
-        // Add visual feedback for element selection
         selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
       }
     }
@@ -270,7 +264,6 @@ export function Mermaid({
       }
     }
 
-    // Enhanced touch events for mobile
     const handleTouchStart = (e: TouchEvent) => {
       e.preventDefault()
 
@@ -279,7 +272,6 @@ export function Mermaid({
         setIsDragging(true)
         setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
       } else if (e.touches.length === 2) {
-        // Pinch zoom setup
         const touch1 = e.touches[0]
         const touch2 = e.touches[1]
         lastTouchDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
@@ -300,7 +292,6 @@ export function Mermaid({
           y: touch.clientY - dragStart.y,
         })
       } else if (e.touches.length === 2) {
-        // Pinch zoom
         const touch1 = e.touches[0]
         const touch2 = e.touches[1]
         const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
@@ -327,10 +318,6 @@ export function Mermaid({
         }
 
         lastTouchDistance = distance
-        lastTouchCenter = {
-          x: (touch1.clientX + touch2.clientX) / 2,
-          y: (touch1.clientY + touch2.clientY) / 2,
-        }
       }
     }
 
@@ -340,7 +327,6 @@ export function Mermaid({
       lastTouchDistance = 0
     }
 
-    // Add event listeners with proper options
     container.addEventListener("wheel", handleWheel, { passive: false, capture: true })
     container.addEventListener("mousedown", handleMouseDown)
     container.addEventListener("mousemove", handleMouseMove)
@@ -411,7 +397,6 @@ export function Mermaid({
     }
   }, [copyToClipboard, sanitizedCode])
 
-  // Enhanced download functionality with multiple formats
   const handleDownload = useCallback(
     async (format: "svg" | "png" | "jpeg" = "svg") => {
       const container = containerRef.current
@@ -438,7 +423,6 @@ export function Mermaid({
           document.body.removeChild(link)
           URL.revokeObjectURL(url)
         } else {
-          // For PNG and JPEG, we need to convert SVG to canvas
           const canvas = document.createElement("canvas")
           const ctx = canvas.getContext("2d")
           if (!ctx) throw new Error("Could not get canvas context")
@@ -447,7 +431,6 @@ export function Mermaid({
 
           await new Promise((resolve, reject) => {
             img.onload = () => {
-              // Set canvas size with high DPI support
               const scale = window.devicePixelRatio || 1
               canvas.width = img.width * scale
               canvas.height = img.height * scale
@@ -456,7 +439,6 @@ export function Mermaid({
 
               ctx.scale(scale, scale)
 
-              // Set background based on theme for non-transparent formats
               if (format === "jpeg") {
                 const bgColor = theme === "dark" ? "#1f2937" : "#ffffff"
                 ctx.fillStyle = bgColor
@@ -470,14 +452,12 @@ export function Mermaid({
             img.onerror = reject
             img.crossOrigin = "anonymous"
 
-            // Create blob URL for SVG
             const svgData = svgElement.outerHTML
             const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
             const svgUrl = URL.createObjectURL(svgBlob)
             img.src = svgUrl
           })
 
-          // Convert canvas to blob and download
           canvas.toBlob(
             (blob) => {
               if (blob) {
@@ -497,7 +477,6 @@ export function Mermaid({
         }
       } catch (error) {
         console.error("Download failed:", error)
-        // Show error feedback
         setLabel("Download failed")
         setTimeout(() => setLabel("Copy SVG"), 3000)
       } finally {
@@ -507,7 +486,6 @@ export function Mermaid({
     [theme],
   )
 
-  // Enhanced zoom controls with better increments
   const handleZoomIn = useCallback(() => {
     const increment = screenSize === "mobile" ? 0.15 : 0.2
     setZoom((prev) => Math.min(5, prev + increment))
@@ -562,10 +540,9 @@ export function Mermaid({
         setWasFixed(false)
         setWasConverted(false)
 
-        // Enhanced DOM cleanup to prevent removeChild errors
+        // Enhanced DOM cleanup
         const safeCleanContainer = () => {
           try {
-            // Remove all child nodes safely
             while (container.firstChild) {
               try {
                 container.removeChild(container.firstChild)
@@ -574,13 +551,11 @@ export function Mermaid({
                 break
               }
             }
-            // Ensure container is completely clean
             if (container.children.length > 0) {
               container.innerHTML = ""
             }
           } catch (e) {
             console.warn("Error during container cleanup:", e)
-            // Fallback: force clear with innerHTML
             try {
               container.innerHTML = ""
             } catch (innerError) {
@@ -589,7 +564,6 @@ export function Mermaid({
           }
         }
 
-        // Clean container safely
         safeCleanContainer()
         container.removeAttribute("data-processed")
 
@@ -609,7 +583,7 @@ export function Mermaid({
         }
 
         try {
-          // Initialize mermaid with the selected theme - force reinitialize
+          // Initialize mermaid with the selected theme for v11.6.0
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: "loose",
@@ -620,9 +594,6 @@ export function Mermaid({
               htmlLabels: true,
               curve: "basis",
               padding: screenSize === "mobile" ? 10 : 20,
-            },
-            journey: {
-              useMaxWidth: false,
             },
             sequence: {
               useMaxWidth: false,
@@ -645,11 +616,20 @@ export function Mermaid({
             state: {
               useMaxWidth: false,
             },
-            // Add more diagram type configurations
             pie: {
               useMaxWidth: false,
             },
             requirement: {
+              useMaxWidth: false,
+            },
+            // v11.6.0 specific configurations
+            mindmap: {
+              useMaxWidth: false,
+            },
+            timeline: {
+              useMaxWidth: false,
+            },
+            sankey: {
               useMaxWidth: false,
             },
             c4: {
@@ -657,16 +637,6 @@ export function Mermaid({
               diagramPadding: 20,
             },
           })
-
-          // Force mermaid to reinitialize completely for theme changes
-          if (typeof mermaid.reinitialize === "function") {
-            mermaid.reinitialize({
-              startOnLoad: false,
-              securityLevel: "loose",
-              theme: selectedTheme,
-              logLevel: "error",
-            })
-          }
 
           const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
@@ -686,7 +656,6 @@ export function Mermaid({
             }
           }
 
-          // Create wrapper with better error handling
           const wrapper = document.createElement("div")
           wrapper.innerHTML = svg
           wrapper.style.transformOrigin = "center center"
@@ -697,13 +666,11 @@ export function Mermaid({
           wrapper.style.top = "50%"
           wrapper.style.left = "50%"
 
-          // Add interaction classes for better element selection
           const svgElement = wrapper.querySelector("svg")
           if (svgElement) {
             svgElement.style.userSelect = "none"
             svgElement.style.pointerEvents = "auto"
 
-            // Add hover effects for interactive elements
             const nodes = svgElement.querySelectorAll("g[class*='node'], g[class*='actor']")
             nodes.forEach((node) => {
               const element = node as HTMLElement
@@ -721,7 +688,6 @@ export function Mermaid({
             })
           }
 
-          // Safely append wrapper to container
           try {
             if (container && container.parentNode && document.contains(container)) {
               container.appendChild(wrapper)
@@ -730,7 +696,6 @@ export function Mermaid({
             }
           } catch (e) {
             console.error("Error appending wrapper:", e)
-            // Try one more cleanup and append
             try {
               safeCleanContainer()
               if (container && container.parentNode && document.contains(container)) {
@@ -745,7 +710,6 @@ export function Mermaid({
             setTimeout(() => handleFitToScreen(), 100)
           }
 
-          // Add success/conversion messages with safe DOM operations
           if (codeWasFixed || isOldSyntax || wasFixed) {
             const successDiv = document.createElement("div")
             let messageText = "Syntax automatically fixed"
@@ -790,7 +754,6 @@ export function Mermaid({
           const errorMessage = error instanceof Error ? error.message : "Unknown rendering error"
           setError(errorMessage)
 
-          // Safe error display
           const errorDiv = document.createElement("div")
           errorDiv.className = "text-red-500 p-4 text-center max-w-lg mx-auto"
 
@@ -806,11 +769,12 @@ export function Mermaid({
           ) {
             errorContent += `
               <div class="text-xs text-gray-600 mb-6 p-4 bg-gray-50 rounded-lg">
-                <strong class="block mb-2">Common fixes:</strong>
+                <strong class="block mb-2">Common fixes for Mermaid v11.6.0:</strong>
                 • Check diagram type declaration (graph TD, sequenceDiagram, etc.)<br>
                 • Ensure proper spacing between elements<br>
                 • Check for missing or extra characters<br>
                 • Verify all brackets and quotes are properly closed<br>
+                • Escape special characters (&lt;, &gt;, &amp;) in labels<br>
                 • Try simplifying complex parts of your diagram
               </div>
             `
@@ -888,7 +852,6 @@ export function Mermaid({
   // Render chart when chart or theme changes
   useEffect(() => {
     if (isClient && chart) {
-      // Debounce rapid theme changes
       const timeoutId = setTimeout(() => {
         renderChart(chart, theme)
       }, 100)
@@ -902,7 +865,6 @@ export function Mermaid({
       const container = containerRef.current
       if (container) {
         try {
-          // Safe cleanup on unmount
           while (container.firstChild) {
             try {
               container.removeChild(container.firstChild)
@@ -926,7 +888,7 @@ export function Mermaid({
 
   const handleThemeChange = useCallback(
     async (newTheme: Theme) => {
-      if (newTheme === theme) return // Prevent unnecessary re-renders
+      if (newTheme === theme) return
 
       setTheme(newTheme)
       setShowThemeSelector(false)
@@ -934,7 +896,6 @@ export function Mermaid({
       if (isClient) {
         localStorage.setItem("mermaid-theme", newTheme)
         if (chart) {
-          // Add a small delay to ensure state updates are processed
           await new Promise((resolve) => setTimeout(resolve, 50))
           await renderChart(chart, newTheme)
         }
@@ -943,7 +904,6 @@ export function Mermaid({
     [isClient, chart, renderChart, theme],
   )
 
-  // Don't render anything on server side
   if (!isClient) {
     return (
       <div className="w-full h-64 flex items-center justify-center">
@@ -966,10 +926,10 @@ export function Mermaid({
           {outputCode && (
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                Valid Syntax
+                Mermaid v11.6.0
               </Badge>
               <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                Context-Aware
+                Syntax Safe
               </Badge>
             </div>
           )}
@@ -1174,7 +1134,7 @@ export function Mermaid({
             <span>Code</span>
           </button>
 
-          {/* Fullscreen Toggle - Positioned on the right */}
+          {/* Fullscreen Toggle */}
           <button
             className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white/80 hover:bg-gray-50 transition-colors"
             onClick={handleFullscreen}
@@ -1219,7 +1179,7 @@ export function Mermaid({
         />
       )}
 
-      {/* Pan Indicator - Static positioning */}
+      {/* Pan Indicator */}
       {(Math.abs(pan.x) > 10 || Math.abs(pan.y) > 10) && (
         <div className={`absolute ${screenSize === "mobile" ? "top-2 left-2" : "top-4 left-4"} z-20`}>
           <div className="bg-white/95 rounded-lg shadow-lg border border-gray-200/50 px-3 py-2">
@@ -1239,7 +1199,7 @@ export function Mermaid({
           <div className={`flex ${screenSize === "mobile" ? "flex-col gap-4" : "justify-between items-center"} mb-6`}>
             <div className="flex items-center gap-3">
               <h3 className={`${screenSize === "mobile" ? "text-base" : "text-lg"} font-semibold`}>
-                Mermaid Diagram Code
+                Mermaid Diagram Code (v11.6.0)
               </h3>
               {wasFixed && (
                 <span className="px-3 py-1 bg-green-800 text-green-100 rounded-full text-xs font-medium">
@@ -1280,7 +1240,7 @@ export function Mermaid({
               }`}
             >
               <div className={`text-sm font-medium mb-3 ${wasConverted ? "text-blue-100" : "text-green-100"}`}>
-                {wasConverted ? "Old Flowchart Syntax Converted:" : "Syntax Issues Fixed:"}
+                {wasConverted ? "Old Flowchart Syntax Converted:" : "Syntax Issues Fixed for v11.6.0:"}
               </div>
               <div className={`text-sm ${wasConverted ? "text-blue-200" : "text-green-200"}`}>
                 {wasConverted ? (
@@ -1288,11 +1248,13 @@ export function Mermaid({
                     • Converted old flowchart.js syntax to Mermaid format
                     <br />• Transformed node definitions (start, operation, condition, end)
                     <br />• Fixed connection syntax and arrow formats
+                    <br />• Applied v11.6.0 compatibility enhancements
                   </>
                 ) : (
                   <>
                     • Fixed missing connections and syntax errors
-                    <br />• Ensured proper Mermaid syntax compliance
+                    <br />• Ensured proper Mermaid v11.6.0 syntax compliance
+                    <br />• Escaped special characters in labels (&lt;, &gt;, &amp;)
                     <br />• Optimized for better rendering performance
                   </>
                 )}
@@ -1342,10 +1304,10 @@ export function Mermaid({
             <div className="flex flex-col items-center gap-4 text-gray-500">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <span className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-medium`}>
-                Rendering diagram...
+                Rendering diagram with Mermaid v11.6.0...
               </span>
               <div className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-gray-400`}>
-                This may take a moment for complex diagrams
+                Enhanced syntax validation and error prevention
               </div>
             </div>
           )}
@@ -1362,7 +1324,7 @@ export function Mermaid({
           <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className={`${screenSize === "mobile" ? "text-sm" : "text-sm"} font-semibold text-red-800`}>
-              Diagram Rendering Error
+              Mermaid v11.6.0 Rendering Error
             </p>
             <p className={`${screenSize === "mobile" ? "text-xs" : "text-xs"} text-red-600 mt-1`}>{error}</p>
             <button
@@ -1402,6 +1364,16 @@ function createSimplifiedDiagram(originalCode: string): string {
     section Task
       Step 1: 3: User
       Step 2: 4: User`
+  } else if (firstLine.startsWith("mindmap")) {
+    return `mindmap
+  root((Main Topic))
+    A[Subtopic 1]
+    B[Subtopic 2]`
+  } else if (firstLine.startsWith("timeline")) {
+    return `timeline
+    title Timeline
+    2023 : Event 1
+    2024 : Event 2`
   } else {
     return `graph TD
     A[Simplified Diagram] --> B[Original syntax had errors]

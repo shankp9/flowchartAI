@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
       diagramType = null,
     } = body
 
-    // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY
 
     if (!apiKey) {
@@ -54,14 +53,14 @@ export async function POST(req: NextRequest) {
         role: "system",
         content: `You are an expert Mermaid diagram analyst. Analyze the given diagram and provide:
 1) A brief summary of what the diagram shows (max 50 words)
-2) Three specific, actionable suggestions that will generate VALID Mermaid syntax
+2) Three specific, actionable suggestions that will generate VALID Mermaid v11.6.0 syntax
 
-CRITICAL SUGGESTION RULES:
-- Suggestions MUST result in valid, renderable Mermaid diagrams
+CRITICAL SUGGESTION RULES FOR MERMAID v11.6.0:
+- Suggestions MUST result in valid, renderable Mermaid v11.6.0 diagrams
 - Focus on structural improvements (add nodes, connections, decision points)
-- Avoid suggestions that require complex syntax or experimental features
 - Ensure suggestions work with the current diagram type
 - Use simple, clear language that translates to basic Mermaid elements
+- Consider v11.6.0 features like mindmaps, timelines, and enhanced C4 diagrams
 
 VALID SUGGESTION EXAMPLES:
 - "Add error handling paths to the process flow"
@@ -69,12 +68,13 @@ VALID SUGGESTION EXAMPLES:
 - "Add parallel processing branches"
 - "Include start and end nodes"
 - "Add validation steps between processes"
+- "Create a mindmap view of the process"
+- "Add timeline elements for sequential steps"
 
 AVOID SUGGESTIONS THAT:
-- Require complex styling or theming
-- Use experimental Mermaid features
+- Require experimental features
+- Use non-standard syntax
 - Need external integrations
-- Require non-standard syntax
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -87,7 +87,7 @@ Respond ONLY with valid JSON in this exact format:
 }`,
       }
     } else {
-      // Enhanced system message with retry-specific instructions
+      // Enhanced system message with v11.6.0 specific instructions
       const retryInstructions =
         retryAttempt > 0
           ? `
@@ -95,11 +95,12 @@ Respond ONLY with valid JSON in this exact format:
 CRITICAL RETRY INSTRUCTIONS (Attempt ${retryAttempt + 1}/3):
 - This is a retry attempt due to previous syntax errors
 - Previous errors: ${previousErrors.join("; ")}
-- Use ONLY the most basic, validated Mermaid syntax
+- Use ONLY the most basic, validated Mermaid v11.6.0 syntax
 - Avoid complex features that might cause parsing errors
 - Start directly with diagram type keyword
 - Use simple node names without special characters
 - Ensure all arrows and connections are properly formatted
+- Escape special characters in labels (&lt;, &gt;, &amp;)
 - Double-check every line for syntax correctness
 - NO explanatory text, ONLY valid Mermaid code
 
@@ -109,7 +110,6 @@ ${retryAttempt === 2 ? "- Use minimal syntax with proven patterns only" : ""}
 `
           : ""
 
-      // Context handling for modifications
       const contextInstructions =
         isModification && currentDiagram
           ? `
@@ -133,87 +133,95 @@ MODIFICATION RULES:
 
       systemMessage = {
         role: "system",
-        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code that is compatible with Mermaid version 10.9.3 EXACTLY.
+        content: `You are an expert Mermaid diagram generator. You MUST generate ONLY valid Mermaid syntax code that is compatible with Mermaid version 11.6.0 EXACTLY.
 
-CRITICAL COMPATIBILITY RULES FOR MERMAID 10.9.3:
+CRITICAL COMPATIBILITY RULES FOR MERMAID 11.6.0:
 1. NEVER include explanatory text before or after the diagram code
 2. ALWAYS start your response directly with the diagram type keyword
-3. Use ONLY basic, well-established Mermaid syntax compatible with version 10.9.3
-4. NEVER use features introduced after version 10.9.3
-5. Stick to simple, proven patterns that were stable in version 10.9.3
+3. Use ONLY syntax that is fully compatible with Mermaid v11.6.0
+4. ALWAYS escape special characters in labels using HTML entities (&lt;, &gt;, &amp;)
+5. Ensure proper spacing around all operators and arrows
+6. Use double quotes for labels containing special characters or spaces
 
-SUPPORTED DIAGRAM TYPES IN MERMAID 10.9.3:
+SUPPORTED DIAGRAM TYPES IN MERMAID 11.6.0:
 - graph TD/LR/TB/RL (flowchart)
+- flowchart TD/LR/TB/RL (enhanced flowchart)
 - sequenceDiagram
 - classDiagram
-- stateDiagram
+- stateDiagram-v2
 - erDiagram
 - journey
 - gantt
-- pie
+- pie title "Chart Title"
 - gitGraph
+- mindmap
+- timeline
+- sankey-beta
+- requirementDiagram
+- c4Context, c4Container, c4Component, c4Dynamic, c4Deployment
 
-MANDATORY SYNTAX VALIDATION FOR VERSION 10.9.3:
-- Every line must follow exact Mermaid 10.9.3 specification
-- No experimental syntax elements
-- Use only alphanumeric characters and basic symbols
-- Ensure all brackets, braces, and quotes are properly matched
-- Test compatibility with Mermaid 10.9.3 syntax rules
+MANDATORY SYNTAX VALIDATION FOR VERSION 11.6.0:
+- Every line must follow exact Mermaid 11.6.0 specification
+- Escape all special characters (&lt;, &gt;, &amp;) in node labels
+- Use proper bracket matching for all constructs
+- Ensure all node IDs are alphanumeric with underscores only
+- Test compatibility with Mermaid 11.6.0 syntax rules
 
-FLOWCHART RULES (v10.9.3 compatible):
-- Use: graph TD, graph LR, graph TB, graph RL only
+FLOWCHART RULES (v11.6.0 compatible):
+- Use: graph TD, graph LR, flowchart TD, flowchart LR
 - Node syntax: A[Text], B(Text), C{Text}, D((Text))
 - Connection syntax: A --> B, A --- B, A -.- B
-- Labels: A -->|label| B
-- NEVER use: complex styling, custom themes, advanced features not in 10.9.3
+- Labels: A -->|label| B (escape special chars in labels)
+- Subgraphs: subgraph title ... end
 
-SEQUENCE DIAGRAM RULES (v10.9.3 compatible):
+SEQUENCE DIAGRAM RULES (v11.6.0 compatible):
 - Start with: sequenceDiagram
-- Participant syntax: participant A, participant B as Name
+- Participant syntax: participant A, participant B as "Name"
 - Arrow syntax: A->>B: Message, A-->>B: Response, A-xB: Cancel
-- NEVER start arrows without sender: CORRECT "A->>B", INCORRECT "->>B"
-- NEVER use: advanced formatting not available in 10.9.3
+- NEVER start arrows without sender
+- Escape special characters in messages
+- Support for notes, loops, alternatives
 
-CLASS DIAGRAM RULES (v10.9.3 compatible):
+CLASS DIAGRAM RULES (v11.6.0 compatible):
 - Start with: classDiagram
 - Class syntax: class ClassName
 - Method syntax: ClassName : methodName()
 - Attribute syntax: ClassName : attributeName
 - Relationship syntax: ClassA --|> ClassB, ClassA --> ClassB
-- NEVER use: complex inheritance patterns not supported in 10.9.3
+- Support for interfaces and abstract classes
 
-ER DIAGRAM RULES (v10.9.3 compatible):
+ER DIAGRAM RULES (v11.6.0 compatible):
 - Start with: erDiagram
 - Entity syntax: ENTITY { type attribute }
 - Relationship syntax: ENTITY ||--o{ OTHER_ENTITY : relationship
-- NEVER use: complex ER features not in 10.9.3
+- Support for cardinality and relationship labels
 
-GANTT CHART RULES (v10.9.3 compatible):
-- Start with: gantt
-- Title syntax: title Project Timeline
-- Section syntax: section Development
-- Task syntax: Task Name :done, des1, 2023-01-01, 2023-01-15
-- NEVER use: advanced Gantt features not in 10.9.3
+MINDMAP RULES (v11.6.0 compatible):
+- Start with: mindmap
+- Root syntax: root((Central Topic))
+- Branch syntax: A[Branch], B(Branch), C{{Branch}}
+- Nested structure with proper indentation
 
-PIE CHART RULES (v10.9.3 compatible):
-- Start with: pie title Chart Title
-- Data syntax: "Label" : value
-- NEVER use: complex pie chart features not in 10.9.3
+TIMELINE RULES (v11.6.0 compatible):
+- Start with: timeline
+- Title syntax: title Timeline Title
+- Event syntax: period : event
+- Support for multiple events per period
 
-JOURNEY RULES (v10.9.3 compatible):
-- Start with: journey
-- Title syntax: title User Journey
-- Section syntax: section Experience
-- Task syntax: Task: score: Actor
-- NEVER use: advanced journey features not in 10.9.3
+C4 DIAGRAM RULES (v11.6.0 compatible):
+- Start with: c4Context, c4Container, c4Component, etc.
+- Person syntax: Person(alias, "Label")
+- System syntax: System(alias, "Label")
+- Relationship syntax: Rel(from, to, "Label")
 
 RESPONSE FORMAT:
 - Start immediately with diagram type (no explanation)
-- Use only validated, 10.9.3 compatible syntax
+- Use only validated, 11.6.0 compatible syntax
 - End immediately after diagram (no explanation)
-- Maximum simplicity while meeting user requirements${retryInstructions}${contextInstructions}
+- Escape all special characters in labels
+- Maximum clarity while meeting user requirements${retryInstructions}${contextInstructions}
 
-RESPOND WITH MERMAID 10.9.3 COMPATIBLE CODE ONLY!`,
+RESPOND WITH MERMAID 11.6.0 COMPATIBLE CODE ONLY!`,
       }
     }
 
@@ -221,16 +229,13 @@ RESPOND WITH MERMAID 10.9.3 COMPATIBLE CODE ONLY!`,
     const processedMessages = [...messages]
 
     if (!isSummaryRequest && isModification && currentDiagram) {
-      // Get the last user message
       const lastMessage = processedMessages[processedMessages.length - 1]
 
       if (lastMessage && lastMessage.role === "user") {
-        // Enhance the user message with context for the AI, but this won't be shown to the user
         const enhancedContent = `${lastMessage.content}
 
 Based on the current diagram, please modify it according to the request while maintaining the existing structure and connections.`
 
-        // Replace the last message with the enhanced version
         processedMessages[processedMessages.length - 1] = {
           ...lastMessage,
           content: enhancedContent,
@@ -248,7 +253,7 @@ Based on the current diagram, please modify it according to the request while ma
         model,
         messages: [systemMessage, ...processedMessages],
         stream: !isSummaryRequest,
-        temperature: retryAttempt > 0 ? 0.1 : 0.2, // Lower temperature for retries
+        temperature: retryAttempt > 0 ? 0.1 : 0.2,
         max_tokens: isSummaryRequest ? 300 : 1000,
       }),
     })
