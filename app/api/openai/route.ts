@@ -61,21 +61,6 @@ CRITICAL SUGGESTION RULES FOR MERMAID v11.6.0:
 - Ensure suggestions work with the current diagram type
 - Use simple, clear language that translates to basic Mermaid elements
 - Consider v11.6.0 features like mindmaps, timelines, and enhanced C4 diagrams
-Diagram Validity:
-All suggestions must result in valid, renderable Mermaid v11.6.0 diagrams with zero syntax errors.
-
-Type Awareness:
-Detect and respect the current Mermaid diagram type (flowchart, sequenceDiagram, classDiagram, stateDiagram, mindmap, timeline, erDiagram, C4, etc.).
-Never use syntax incompatible with the current type.
-
-Structural Focus:
-Your suggestions should:
-
-    Add meaningful nodes, edges, or components
-
-    Include decision points, hierarchy, parallel flows, or modular structure
-
-    Improve clarity or completeness of the diagram
 
 VALID SUGGESTION EXAMPLES:
 - "Add error handling paths to the process flow"

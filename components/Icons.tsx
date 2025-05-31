@@ -1,5 +1,6 @@
 import type React from "react"
-import { Laptop, type LightbulbIcon as LucideProps, Twitter } from "lucide-react"
+import type { LucideProps } from "lucide-react"
+import { Laptop, Twitter } from "lucide-react"
 
 export type Icon = (props: LucideProps) => React.ReactElement
 
