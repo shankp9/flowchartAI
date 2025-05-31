@@ -21,7 +21,7 @@ export function parseCodeFromMessage(message: string): string {
   return match ? match[1].trim() : message.trim()
 }
 
-// Enhanced validation function with detailed error reporting
+// Enhanced validation function with detailed error reporting for Mermaid 10.9.3
 export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
@@ -42,51 +42,37 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
 
   const firstLine = lines[0].toLowerCase()
 
-  // Check if it starts with a valid diagram type for v11.6.0
+  // Check if it starts with a valid diagram type for v10.9.3
   const validStarts = [
     "graph",
     "flowchart",
     "sequencediagram",
     "classDiagram",
-    "classDiagram-v2",
     "stateDiagram",
-    "stateDiagram-v2",
     "erDiagram",
     "journey",
     "gantt",
     "pie",
     "gitGraph",
-    "requirementDiagram",
-    "c4Context",
-    "c4Container",
-    "c4Component",
-    "c4Dynamic",
-    "c4Deployment",
-    "mindmap",
-    "timeline",
-    "quadrantChart",
-    "sankey",
-    "block",
-    "xy",
   ]
 
   const hasValidStart = validStarts.some((start) => firstLine.startsWith(start))
   if (!hasValidStart) {
-    errors.push(`Invalid diagram type for Mermaid v11.6.0. Must start with one of: ${validStarts.join(", ")}`)
+    errors.push(`Invalid diagram type for Mermaid v10.9.3. Must start with one of: ${validStarts.join(", ")}`)
   }
 
-  // Version 11.6.0 specific validation
-  validateMermaidV11Compatibility(code, errors)
+  // Version 10.9.3 specific validation
+  validateMermaidV10Compatibility(code, errors)
 
-  // Diagram-specific validation with v11.6.0 focus
+  // Diagram-specific validation with v10.9.3 focus
   if (firstLine.startsWith("sequencediagram")) {
-    validateSequenceDiagramV11(lines.slice(1), errors)
+    validateSequenceDiagramV10(lines.slice(1), errors)
   } else if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
-    validateFlowchartV11(lines.slice(1), errors)
+    validateFlowchartV10(lines.slice(1), errors)
   } else if (firstLine.startsWith("classdiagram")) {
-    validateClassDiagramV11(lines.slice(1), errors)
+    validateClassDiagramV10(lines.slice(1), errors)
   } else if (firstLine.startsWith("erdiagram")) {
-    validateERDiagramV11(lines.slice(1), errors)
+    validateERDiagramV10(lines.slice(1), errors)
   }
 
   // Check for common error patterns and incompatible features
@@ -95,27 +81,33 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     errors.push("Contains error keywords that will cause parsing failures")
   }
 
-  // Check for v11.6.0 incompatible features
+  // Check for v10.9.3 incompatible features
   if (codeText.includes("%%{") || codeText.includes("config:")) {
-    errors.push("Configuration syntax not compatible with v11.6.0")
+    errors.push("Configuration syntax not compatible with v10.9.3")
   }
 
   if (codeText.includes("click ") && !codeText.includes("sequencediagram")) {
-    errors.push("Click events may not be compatible with v11.6.0")
+    errors.push("Click events may not be compatible with v10.9.3")
   }
 
   return { isValid: errors.length === 0, errors }
 }
 
-function validateMermaidV11Compatibility(code: string, errors: string[]) {
-  // Check for potentially incompatible syntax patterns
+function validateMermaidV10Compatibility(code: string, errors: string[]) {
+  // Check for potentially incompatible syntax patterns for v10.9.3
   const incompatiblePatterns = [
-    { pattern: /%%\{.*?\}%%/g, message: "Configuration blocks not supported in v11.6.0" },
-    { pattern: /classDef\s+\w+\s+.*?;/g, message: "classDef styling may cause issues in v11.6.0" },
-    { pattern: /linkStyle\s+\d+/g, message: "linkStyle may not be compatible with v11.6.0" },
+    { pattern: /%%\{.*?\}%%/g, message: "Configuration blocks not supported in v10.9.3" },
+    { pattern: /classDef\s+\w+\s+.*?;/g, message: "classDef styling may cause issues in v10.9.3" },
+    { pattern: /linkStyle\s+\d+/g, message: "linkStyle may not be compatible with v10.9.3" },
     { pattern: /subgraph\s+\w+\s*\[.*?\]/g, message: "Complex subgraph syntax may cause issues" },
-    { pattern: /direction\s+(TB|TD|BT|RL|LR)/gi, message: "Direction command may not be supported" },
-    { pattern: /flowchart-v2/gi, message: "Flowchart-v2 syntax not compatible with v11.6.0" },
+    { pattern: /direction\s+(TB|TD|BT|RL|LR)/gi, message: "Direction command may not be supported in v10.9.3" },
+    { pattern: /flowchart-v2/gi, message: "Flowchart-v2 syntax not compatible with v10.9.3" },
+    { pattern: /requirementDiagram/gi, message: "requirementDiagram not available in v10.9.3" },
+    { pattern: /c4Context|c4Container|c4Component/gi, message: "C4 diagrams not available in v10.9.3" },
+    {
+      pattern: /mindmap|timeline|quadrantChart|sankey|block|xy/gi,
+      message: "Advanced diagram types not available in v10.9.3",
+    },
   ]
 
   incompatiblePatterns.forEach(({ pattern, message }) => {
@@ -142,28 +134,28 @@ function validateMermaidV11Compatibility(code: string, errors: string[]) {
   })
 }
 
-function validateSequenceDiagramV11(lines: string[], errors: string[]) {
+function validateSequenceDiagramV10(lines: string[], errors: string[]) {
   for (const line of lines) {
-    // Check for arrows without senders (common v11.6.0 issue)
+    // Check for arrows without senders (common v10.9.3 issue)
     if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
-      errors.push(`Invalid sequence diagram arrow without sender (v11.6.0 incompatible): "${line}"`)
+      errors.push(`Invalid sequence diagram arrow without sender (v10.9.3 incompatible): "${line}"`)
     }
 
-    // Check for proper participant format for v11.6.0
+    // Check for proper participant format for v10.9.3
     if (line.startsWith("participant") && !line.match(/participant\s+[A-Za-z0-9_]+(\s+as\s+.+)?$/)) {
-      errors.push(`Invalid participant declaration for v11.6.0: "${line}"`)
+      errors.push(`Invalid participant declaration for v10.9.3: "${line}"`)
     }
 
-    // Check for v11.6.0 incompatible sequence features
+    // Check for v10.9.3 incompatible sequence features
     if (line.includes("rect ") || line.includes("opt ") || line.includes("alt ")) {
-      errors.push(`Advanced sequence features may not be compatible with v11.6.0: "${line}"`)
+      errors.push(`Advanced sequence features may not be compatible with v10.9.3: "${line}"`)
     }
   }
 }
 
-function validateFlowchartV11(lines: string[], errors: string[]) {
+function validateFlowchartV10(lines: string[], errors: string[]) {
   for (const line of lines) {
-    // Check for v11.6.0 compatible arrow syntax only
+    // Check for v10.9.3 compatible arrow syntax only
     const hasValidArrows =
       line.includes("-->") ||
       line.includes("---") ||
@@ -173,99 +165,47 @@ function validateFlowchartV11(lines: string[], errors: string[]) {
       line.includes("=.=>")
 
     if (line.includes("->") && !hasValidArrows) {
-      errors.push(`Use proper v11.6.0 arrow syntax (-->, ---, -.-): "${line}"`)
+      errors.push(`Use proper v10.9.3 arrow syntax (-->, ---, -.-): "${line}"`)
     }
 
     // Check for overly complex node definitions
     if (line.match(/\[.*?\].*?\[.*?\]/)) {
-      errors.push(`Complex node definitions may cause v11.6.0 issues: "${line}"`)
+      errors.push(`Complex node definitions may cause v10.9.3 issues: "${line}"`)
     }
   }
 }
 
-function validateClassDiagramV11(lines: string[], errors: string[]) {
+function validateClassDiagramV10(lines: string[], errors: string[]) {
   for (const line of lines) {
-    // Check for proper class syntax for v11.6.0
+    // Check for proper class syntax for v10.9.3
     if (line.includes("class ") && !line.match(/^class\s+[A-Za-z0-9_]+(\s*\{.*?\})?$/)) {
-      errors.push(`Invalid class declaration for v11.6.0: "${line}"`)
+      errors.push(`Invalid class declaration for v10.9.3: "${line}"`)
     }
 
-    // Check for v11.6.0 incompatible class features
+    // Check for v10.9.3 incompatible class features
     if (line.includes("<<") && line.includes(">>")) {
-      errors.push(`Stereotype syntax may not be compatible with v11.6.0: "${line}"`)
+      errors.push(`Stereotype syntax may not be compatible with v10.9.3: "${line}"`)
     }
 
     // Ensure class definitions and relationships are separate
     if (line.includes("class ") && (line.includes("-->") || line.includes("--|>"))) {
-      errors.push(`Separate class definitions from relationships for v11.6.0 compatibility: "${line}"`)
+      errors.push(`Separate class definitions from relationships for v10.9.3 compatibility: "${line}"`)
     }
   }
 }
 
-function validateERDiagramV11(lines: string[], errors: string[]) {
+function validateERDiagramV10(lines: string[], errors: string[]) {
   for (const line of lines) {
-    // Check for proper entity relationship syntax for v11.6.0
+    // Check for proper entity relationship syntax for v10.9.3
     if (line.includes("||") || line.includes("}|") || line.includes("|{")) {
       if (!line.match(/^[A-Za-z0-9_]+\s+[|}{]+[-|]+[|}{]+\s+[A-Za-z0-9_]+(\s*:\s*.+)?$/)) {
-        errors.push(`Invalid ER relationship syntax for v11.6.0: "${line}"`)
+        errors.push(`Invalid ER relationship syntax for v10.9.3: "${line}"`)
       }
     }
 
     // Check for entity definitions
     if (line.includes("{") && !line.match(/^[A-Za-z0-9_]+\s*\{[\s\S]*?\}$/)) {
-      errors.push(`Invalid entity definition for v11.6.0: "${line}"`)
-    }
-  }
-}
-
-function validateSequenceDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for arrows without senders
-    if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
-      errors.push(`Invalid sequence diagram arrow without sender: "${line}"`)
-    }
-
-    // Check for proper participant format
-    if (line.startsWith("participant") && !line.match(/participant\s+\w+/)) {
-      errors.push(`Invalid participant declaration: "${line}"`)
-    }
-  }
-}
-
-function validateFlowchart(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for missing arrows in connections
-    if (line.includes("-->") || line.includes("->")) {
-      // Valid connection
-      continue
-    } else if (line.match(/^\s*\w+.*\w+\s*$/) && !line.includes("[") && !line.includes("{") && !line.includes("(")) {
-      // Might be missing arrows
-      errors.push(`Possible missing arrow in connection: "${line}"`)
-    }
-  }
-}
-
-function validateClassDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for proper class syntax
-    if (line.includes("class ") && !line.match(/class\s+\w+(\s*\{[\s\S]*?\})?/)) {
-      errors.push(`Invalid class declaration: "${line}"`)
-    }
-
-    // Check for malformed class blocks
-    if (line.includes("{}") && line.includes("-->")) {
-      errors.push(`Invalid class syntax - class definition and relationship on same line: "${line}"`)
-    }
-  }
-}
-
-function validateERDiagram(lines: string[], errors: string[]) {
-  for (const line of lines) {
-    // Check for proper entity relationship syntax
-    if (line.includes("||") || line.includes("}|") || line.includes("|{")) {
-      if (!line.match(/\w+\s+[|}{]+[-|]+[|}{]+\s+\w+/)) {
-        errors.push(`Invalid ER relationship syntax: "${line}"`)
-      }
+      errors.push(`Invalid entity definition for v10.9.3: "${line}"`)
     }
   }
 }
@@ -400,7 +340,7 @@ export function sanitizeMermaidCode(code: string): string {
   const lines = cleanedCode.split("\n")
   let diagramStartIndex = -1
 
-  // Find where the actual diagram starts
+  // Find where the actual diagram starts - only v10.9.3 compatible types
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().toLowerCase()
     if (
@@ -413,15 +353,7 @@ export function sanitizeMermaidCode(code: string): string {
       line.startsWith("statediagram") ||
       line.startsWith("erdiagram") ||
       line.startsWith("pie") ||
-      line.startsWith("gitgraph") ||
-      line.startsWith("requirementdiagram") ||
-      line.startsWith("c4") ||
-      line.startsWith("mindmap") ||
-      line.startsWith("timeline") ||
-      line.startsWith("quadrantchart") ||
-      line.startsWith("sankey") ||
-      line.startsWith("block") ||
-      line.startsWith("xy")
+      line.startsWith("gitgraph")
     ) {
       diagramStartIndex = i
       break
@@ -432,42 +364,42 @@ export function sanitizeMermaidCode(code: string): string {
     cleanedCode = lines.slice(diagramStartIndex).join("\n")
   }
 
-  // Remove v11.6.0 incompatible features
-  cleanedCode = removeIncompatibleFeatures(cleanedCode)
+  // Remove v10.9.3 incompatible features
+  cleanedCode = removeIncompatibleFeaturesV10(cleanedCode)
 
   // Check if this is old flowchart syntax and convert it
   if (isOldFlowchartSyntax(cleanedCode)) {
     cleanedCode = convertOldFlowchartToMermaid(cleanedCode)
   }
 
-  // Enhanced syntax cleaning and validation for v11.6.0
-  cleanedCode = cleanInvalidSyntaxV11(cleanedCode)
+  // Enhanced syntax cleaning and validation for v10.9.3
+  cleanedCode = cleanInvalidSyntaxV10(cleanedCode)
 
   // Fix common sequence diagram issues
   if (cleanedCode.includes("sequenceDiagram")) {
-    cleanedCode = fixSequenceDiagramSyntaxV11(cleanedCode)
+    cleanedCode = fixSequenceDiagramSyntaxV10(cleanedCode)
   }
 
   // Fix common flowchart issues
   if (cleanedCode.includes("graph") || cleanedCode.includes("flowchart")) {
-    cleanedCode = fixFlowchartSyntaxV11(cleanedCode)
+    cleanedCode = fixFlowchartSyntaxV10(cleanedCode)
   }
 
   // Fix ER diagram issues
   if (cleanedCode.includes("erDiagram")) {
-    cleanedCode = fixERDiagramSyntaxV11(cleanedCode)
+    cleanedCode = fixERDiagramSyntaxV10(cleanedCode)
   }
 
-  // Fix class diagram issues - ENHANCED for v11.6.0
+  // Fix class diagram issues - ENHANCED for v10.9.3
   if (cleanedCode.includes("classDiagram")) {
-    cleanedCode = fixClassDiagramSyntaxV11(cleanedCode)
+    cleanedCode = fixClassDiagramSyntaxV10(cleanedCode)
   }
 
-  // Final v11.6.0 compatibility check and cleanup
-  cleanedCode = ensureV11Compatibility(cleanedCode)
+  // Final v10.9.3 compatibility check and cleanup
+  cleanedCode = ensureV10Compatibility(cleanedCode)
 
   // Enhanced line processing to fix arrow syntax issues
-  cleanedCode = fixArrowSyntaxIssues(cleanedCode)
+  cleanedCode = fixArrowSyntaxIssuesV10(cleanedCode)
 
   // Remove empty lines and normalize whitespace
   cleanedCode = cleanedCode
@@ -479,7 +411,7 @@ export function sanitizeMermaidCode(code: string): string {
   return cleanedCode
 }
 
-function fixArrowSyntaxIssues(code: string): string {
+function fixArrowSyntaxIssuesV10(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
 
@@ -495,7 +427,7 @@ function fixArrowSyntaxIssues(code: string): string {
       continue
     }
 
-    // Fix arrow syntax issues
+    // Fix arrow syntax issues for v10.9.3
     if (line.includes("-->") || line.includes("->")) {
       // Fix incomplete arrow labels that might cause parse errors
       line = line.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*$/g, (match, label) => {
@@ -503,7 +435,7 @@ function fixArrowSyntaxIssues(code: string): string {
         if (!label || label.trim() === "") {
           return "-->"
         }
-        // Ensure proper label format
+        // Ensure proper label format for v10.9.3
         return `-->|${label.trim()}|`
       })
 
@@ -514,11 +446,11 @@ function fixArrowSyntaxIssues(code: string): string {
       line = line.replace(/([A-Za-z0-9_\])}]+)-->/g, "$1 -->")
       line = line.replace(/-->([A-Za-z0-9_[({]+)/g, "--> $1")
 
-      // Fix single arrows to double arrows for better compatibility
+      // Fix single arrows to double arrows for better v10.9.3 compatibility
       line = line.replace(/([A-Za-z0-9_\])}]+)\s*->\s*([A-Za-z0-9_[({]+)/g, "$1 --> $2")
     }
 
-    // Fix sequence diagram arrow syntax
+    // Fix sequence diagram arrow syntax for v10.9.3
     if (line.includes("->>") || line.includes("-->>") || line.includes("-x")) {
       // Ensure proper spacing around sequence arrows
       line = line.replace(/([A-Za-z0-9_]+)\s*(->>|-->>|-x)\s*([A-Za-z0-9_]+)/g, "$1 $2 $3")
@@ -558,29 +490,34 @@ function fixArrowSyntaxIssues(code: string): string {
   return fixedLines.join("\n")
 }
 
-function removeIncompatibleFeatures(code: string): string {
+function removeIncompatibleFeaturesV10(code: string): string {
   let cleaned = code
 
   // Remove configuration blocks
   cleaned = cleaned.replace(/%%\{[\s\S]*?\}%%/g, "")
 
-  // Remove styling commands that may cause issues
+  // Remove styling commands that may cause issues in v10.9.3
   cleaned = cleaned.replace(/classDef\s+\w+\s+[^;]*;/g, "")
   cleaned = cleaned.replace(/linkStyle\s+\d+[^;]*;/g, "")
 
-  // Remove click events that may cause issues
+  // Remove click events that may cause issues in v10.9.3
   cleaned = cleaned.replace(/click\s+\w+\s+[^;]*;/g, "")
 
-  // Remove direction commands that may not be supported
+  // Remove direction commands that may not be supported in v10.9.3
   cleaned = cleaned.replace(/direction\s+(TB|TD|BT|RL|LR)/gi, "")
 
   // Remove subgraph complex syntax
   cleaned = cleaned.replace(/subgraph\s+\w+\s*\[.*?\]/g, "subgraph")
 
+  // Remove features not available in v10.9.3
+  cleaned = cleaned.replace(/requirementDiagram/gi, "graph TD")
+  cleaned = cleaned.replace(/c4Context|c4Container|c4Component|c4Dynamic|c4Deployment/gi, "graph TD")
+  cleaned = cleaned.replace(/mindmap|timeline|quadrantChart|sankey|block|xy/gi, "graph TD")
+
   return cleaned
 }
 
-function cleanInvalidSyntaxV11(code: string): string {
+function cleanInvalidSyntaxV10(code: string): string {
   let cleaned = code
 
   // Remove common error patterns
@@ -593,11 +530,11 @@ function cleanInvalidSyntaxV11(code: string): string {
   cleaned = cleaned.replace(/\|\|--\|\|/g, "||--||")
   cleaned = cleaned.replace(/\}\|--\|\{/g, "}|--|{")
 
-  // Fix class diagram specific issues for v11.6.0
+  // Fix class diagram specific issues for v10.9.3
   cleaned = cleaned.replace(/\}\s*class\s+/g, "}\n    class ")
   cleaned = cleaned.replace(/\}\s*(\w+)\s*-->/g, "}\n    $1 -->")
 
-  // Fix arrow label syntax issues
+  // Fix arrow label syntax issues for v10.9.3
   cleaned = cleaned.replace(/-->\s*\|\s*\|\s*/g, "--> ")
   cleaned = cleaned.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*\n/g, "-->|$1|\n")
 
@@ -605,7 +542,7 @@ function cleanInvalidSyntaxV11(code: string): string {
   cleaned = cleaned.replace(/-->\s*\|\s*$/gm, "-->")
   cleaned = cleaned.replace(/-->\s*\|([^|]*?)\s*$/gm, "-->|$1|")
 
-  // Remove any remaining problematic characters for v11.6.0
+  // Remove any remaining problematic characters for v10.9.3
   cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()\n]/g, "")
 
   // Fix broken lines and normalize spacing
@@ -616,7 +553,7 @@ function cleanInvalidSyntaxV11(code: string): string {
   return cleaned
 }
 
-function ensureV11Compatibility(code: string): string {
+function ensureV10Compatibility(code: string): string {
   const compatible = code
 
   // Ensure basic diagram structure
@@ -629,33 +566,19 @@ function ensureV11Compatibility(code: string): string {
     // Skip empty lines
     if (!line) continue
 
-    // Ensure first line is a valid diagram type
+    // Ensure first line is a valid diagram type for v10.9.3
     if (i === 0) {
       const validFirstLines = [
         "graph",
         "flowchart",
         "sequenceDiagram",
         "classDiagram",
-        "classDiagram-v2",
         "stateDiagram",
-        "stateDiagram-v2",
         "erDiagram",
         "journey",
         "gantt",
         "pie",
         "gitGraph",
-        "requirementDiagram",
-        "c4Context",
-        "c4Container",
-        "c4Component",
-        "c4Dynamic",
-        "c4Deployment",
-        "mindmap",
-        "timeline",
-        "quadrantChart",
-        "sankey",
-        "block",
-        "xy",
       ]
       const startsWithValid = validFirstLines.some(
         (valid) =>
@@ -663,7 +586,7 @@ function ensureV11Compatibility(code: string): string {
       )
 
       if (!startsWithValid) {
-        // Default to flowchart if no valid start, but don't force it for all cases
+        // Default to flowchart if no valid start
         if (line.trim().length > 0) {
           processedLines.push(line)
         } else {
@@ -689,7 +612,7 @@ function ensureV11Compatibility(code: string): string {
   return processedLines.join("\n")
 }
 
-function fixSequenceDiagramSyntaxV11(code: string): string {
+function fixSequenceDiagramSyntaxV10(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
   let lastParticipant = ""
@@ -704,7 +627,7 @@ function fixSequenceDiagramSyntaxV11(code: string): string {
       continue
     }
 
-    // Handle participant declarations - ensure v11.6.0 compatibility
+    // Handle participant declarations - ensure v10.9.3 compatibility
     if (fixedLine.startsWith("participant")) {
       // Ensure simple participant syntax
       const participantMatch = fixedLine.match(/participant\s+([A-Za-z0-9_]+)(?:\s+as\s+(.+))?/)
@@ -727,7 +650,7 @@ function fixSequenceDiagramSyntaxV11(code: string): string {
       continue
     }
 
-    // Fix arrows that start without a sender (critical for v11.6.0)
+    // Fix arrows that start without a sender (critical for v10.9.3)
     if (fixedLine.match(/^(--?>>?|--?\+\+|-x)/)) {
       if (lastParticipant) {
         fixedLine = `${lastParticipant} ${fixedLine}`
@@ -742,7 +665,7 @@ function fixSequenceDiagramSyntaxV11(code: string): string {
       }
     }
 
-    // Ensure arrow syntax is v11.6.0 compatible
+    // Ensure arrow syntax is v10.9.3 compatible
     const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)(.*)/)
     if (arrowMatch) {
       const [, sender, arrow, receiver, message] = arrowMatch
@@ -750,7 +673,7 @@ function fixSequenceDiagramSyntaxV11(code: string): string {
       participants.add(receiver)
       lastParticipant = sender
 
-      // Ensure message format is simple
+      // Ensure message format is simple for v10.9.3
       const cleanMessage = message ? message.replace(/^\s*:\s*/, " : ").trim() : ""
       fixedLine = `${sender} ${arrow} ${receiver}${cleanMessage}`
     }
@@ -761,7 +684,7 @@ function fixSequenceDiagramSyntaxV11(code: string): string {
   return fixedLines.join("\n")
 }
 
-function fixFlowchartSyntaxV11(code: string): string {
+function fixFlowchartSyntaxV10(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
 
@@ -774,9 +697,9 @@ function fixFlowchartSyntaxV11(code: string): string {
       continue
     }
 
-    // Ensure v11.6.0 compatible arrow syntax
+    // Ensure v10.9.3 compatible arrow syntax
     if (fixedLine.includes("-->") || fixedLine.includes("---") || fixedLine.includes("-.-")) {
-      // Fix arrow label syntax
+      // Fix arrow label syntax for v10.9.3
       fixedLine = fixedLine.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*([A-Za-z0-9_[({]+)/g, "-->|$1| $2")
       fixedLine = fixedLine.replace(/-->\s*\|\s*\|\s*/g, "--> ")
 
@@ -786,7 +709,7 @@ function fixFlowchartSyntaxV11(code: string): string {
 
       fixedLines.push(fixedLine)
     } else if (fixedLine.includes("->") && !fixedLine.includes("-->")) {
-      // Convert single arrow to double arrow for v11.6.0
+      // Convert single arrow to double arrow for v10.9.3
       fixedLine = fixedLine.replace(/->/g, "-->")
       fixedLine = fixedLine.replace(/([A-Za-z0-9_\])}]+)-->/g, "$1 -->")
       fixedLine = fixedLine.replace(/-->([A-Za-z0-9_[({]+)/g, "--> $1")
@@ -813,7 +736,7 @@ function fixFlowchartSyntaxV11(code: string): string {
   return fixedLines.join("\n")
 }
 
-function fixClassDiagramSyntaxV11(code: string): string {
+function fixClassDiagramSyntaxV10(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
   let inClassBlock = false
@@ -828,22 +751,22 @@ function fixClassDiagramSyntaxV11(code: string): string {
       continue
     }
 
-    // Handle class definitions with v11.6.0 compatibility
+    // Handle class definitions with v10.9.3 compatibility
     if (fixedLine.includes("class ")) {
-      // Extract class name and ensure v11.6.0 compatibility
+      // Extract class name and ensure v10.9.3 compatibility
       const classMatch = fixedLine.match(/class\s+([A-Za-z0-9_]+)/)
       if (classMatch) {
         const className = classMatch[1]
 
-        // Check for malformed class block that causes STRUCT_STOP errors
+        // Check for malformed class block that causes issues in v10.9.3
         const malformedMatch = fixedLine.match(/class\s+([A-Za-z0-9_]+)\s*\{\s*\}(.+)/)
         if (malformedMatch) {
           const [, name, remainder] = malformedMatch
-          // Split into proper v11.6.0 class definition and separate line
+          // Split into proper v10.9.3 class definition and separate line
           fixedLines.push(`class ${name} {`)
           fixedLines.push("}")
 
-          // Handle the remainder properly for v11.6.0
+          // Handle the remainder properly for v10.9.3
           const remainderTrimmed = remainder.trim()
           if (remainderTrimmed) {
             if (remainderTrimmed.includes("-->") || remainderTrimmed.includes("<|--")) {
@@ -858,7 +781,7 @@ function fixClassDiagramSyntaxV11(code: string): string {
           continue
         }
 
-        // Normal class definition for v11.6.0
+        // Normal class definition for v10.9.3
         if (fixedLine.includes("{")) {
           inClassBlock = true
           currentClass = className
@@ -876,7 +799,7 @@ function fixClassDiagramSyntaxV11(code: string): string {
       currentClass = ""
       fixedLines.push("}")
 
-      // Handle content after closing brace for v11.6.0
+      // Handle content after closing brace for v10.9.3
       const afterBrace = fixedLine.substring(fixedLine.indexOf("}") + 1).trim()
       if (afterBrace) {
         if (afterBrace.includes("-->") || afterBrace.includes("<|--")) {
@@ -890,20 +813,20 @@ function fixClassDiagramSyntaxV11(code: string): string {
       continue
     }
 
-    // Handle content inside class blocks with v11.6.0 compatibility
+    // Handle content inside class blocks with v10.9.3 compatibility
     if (inClassBlock) {
-      // Ensure simple member syntax for v11.6.0
+      // Ensure simple member syntax for v10.9.3
       if (fixedLine.includes("(") && fixedLine.includes(")")) {
-        // Method definition - keep simple for v11.6.0
+        // Method definition - keep simple for v10.9.3
         fixedLine = fixedLine.replace(/\s+/g, " ")
       }
       fixedLines.push(`    ${fixedLine}`)
       continue
     }
 
-    // Handle relationships with v11.6.0 compatibility
+    // Handle relationships with v10.9.3 compatibility
     if (fixedLine.includes("-->") || fixedLine.includes("<|--") || fixedLine.includes("--|>")) {
-      // Ensure simple relationship syntax for v11.6.0
+      // Ensure simple relationship syntax for v10.9.3
       const relationshipMatch = fixedLine.match(/([A-Za-z0-9_]+)\s*(<\|--|--\|>|-->|<--)\s*([A-Za-z0-9_]+)(.*)/)
       if (relationshipMatch) {
         const [, class1, arrow, class2, label] = relationshipMatch
@@ -924,7 +847,7 @@ function fixClassDiagramSyntaxV11(code: string): string {
     fixedLines.push(fixedLine)
   }
 
-  // Ensure any unclosed class blocks are closed for v11.6.0
+  // Ensure any unclosed class blocks are closed for v10.9.3
   if (inClassBlock) {
     fixedLines.push("}")
   }
@@ -932,7 +855,7 @@ function fixClassDiagramSyntaxV11(code: string): string {
   return fixedLines.join("\n")
 }
 
-function fixERDiagramSyntaxV11(code: string): string {
+function fixERDiagramSyntaxV10(code: string): string {
   const lines = code.split("\n")
   const fixedLines: string[] = []
 
@@ -945,16 +868,16 @@ function fixERDiagramSyntaxV11(code: string): string {
       continue
     }
 
-    // Fix entity definitions for v11.6.0
+    // Fix entity definitions for v10.9.3
     if (fixedLine.includes("{") && !fixedLine.includes("}")) {
       // Multi-line entity definition
       fixedLines.push(fixedLine)
       continue
     }
 
-    // Fix relationship syntax for v11.6.0
+    // Fix relationship syntax for v10.9.3
     if (fixedLine.includes("||") || fixedLine.includes("}|") || fixedLine.includes("|{")) {
-      // Ensure proper v11.6.0 relationship format
+      // Ensure proper v10.9.3 relationship format
       const relationshipMatch = fixedLine.match(/([A-Za-z0-9_]+)\s*([|}{]+[-|]+[|}{]+)\s*([A-Za-z0-9_]+)\s*:\s*(.+)/)
       if (relationshipMatch) {
         const [, entity1, relationship, entity2, label] = relationshipMatch
@@ -962,7 +885,7 @@ function fixERDiagramSyntaxV11(code: string): string {
       }
     }
 
-    // Fix entity attribute syntax for v11.6.0
+    // Fix entity attribute syntax for v10.9.3
     if (fixedLine.includes("{") && fixedLine.includes("}")) {
       const entityMatch = fixedLine.match(/([A-Za-z0-9_]+)\s*\{([^}]+)\}/)
       if (entityMatch) {
@@ -972,7 +895,7 @@ function fixERDiagramSyntaxV11(code: string): string {
           .map((attr) => attr.trim())
           .filter((attr) => attr.length > 0)
           .map((attr) => {
-            // Simple attribute format for v11.6.0
+            // Simple attribute format for v10.9.3
             return attr.replace(/\s+/g, " ").replace(/[^\w\s]/g, "")
           })
           .join("\n        ")
@@ -1062,110 +985,23 @@ function convertOldFlowchartToMermaid(code: string): string {
   return mermaidCode
 }
 
-function fixSequenceDiagramSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-  let lastParticipant = ""
-  const participants = new Set<string>()
-
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    // Skip empty lines and diagram declaration
-    if (!fixedLine || fixedLine === "sequenceDiagram") {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    // Handle participant declarations
-    if (fixedLine.startsWith("participant")) {
-      fixedLines.push(fixedLine)
-      const participantMatch = fixedLine.match(/participant\s+(\w+)/)
-      if (participantMatch) {
-        const participant = participantMatch[1]
-        participants.add(participant)
-        lastParticipant = participant
-      }
-      continue
-    }
-
-    // Fix arrows that start without a sender
-    if (fixedLine.match(/^(--?>>?|--?\+\+|-x)/)) {
-      if (lastParticipant) {
-        fixedLine = `${lastParticipant} ${fixedLine}`
-      } else {
-        // Add a default participant if none exists
-        if (participants.size === 0) {
-          fixedLines.splice(-1, 0, "participant System")
-          participants.add("System")
-        }
-        const defaultParticipant = Array.from(participants)[0]
-        fixedLine = `${defaultParticipant} ${fixedLine}`
-      }
-    }
-
-    // Extract participant from valid arrow syntax and add to participants set
-    const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)/)
-    if (arrowMatch) {
-      const [, sender, , receiver] = arrowMatch
-      participants.add(sender)
-      participants.add(receiver)
-      lastParticipant = sender
-    }
-
-    fixedLines.push(fixedLine)
-  }
-
-  return fixedLines.join("\n")
-}
-
-function fixFlowchartSyntax(code: string): string {
-  const lines = code.split("\n")
-  const fixedLines: string[] = []
-
-  for (const line of lines) {
-    let fixedLine = line.trim()
-
-    // Skip empty lines and graph declaration
-    if (!fixedLine || fixedLine.startsWith("graph") || fixedLine.startsWith("flowchart")) {
-      fixedLines.push(fixedLine)
-      continue
-    }
-
-    // Ensure connections have proper arrow syntax
-    if (fixedLine.includes("-->") || fixedLine.includes("->")) {
-      // Line already has arrows, keep as is
-      fixedLines.push(fixedLine)
-    } else if (fixedLine.match(/^\s*\w+.*\w+\s*$/)) {
-      // Line might be missing arrows between nodes
-      const parts = fixedLine.split(/\s+/)
-      if (parts.length >= 2) {
-        // Add arrows between parts
-        fixedLine = parts.join(" --> ")
-      }
-      fixedLines.push(fixedLine)
-    } else {
-      fixedLines.push(fixedLine)
-    }
-  }
-
-  return fixedLines.join("\n")
-}
-
 export async function OpenAIStream(messages: Message[], model: OpenAIModel, apiKey: string): Promise<ReadableStream> {
   const systemMessage: Message = {
     role: "system",
-    content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description. 
+    content: `You are an expert in creating Mermaid diagrams. Generate only valid Mermaid syntax based on the user's description that is compatible with Mermaid version 10.9.3 EXACTLY.
     
-Available diagram types:
+Available diagram types in Mermaid 10.9.3:
 - Flowchart: graph TD or graph LR
 - Sequence diagram: sequenceDiagram
 - Class diagram: classDiagram
 - User journey: journey
 - Gantt chart: gantt
-- C4 diagram: C4Context, C4Container, C4Component
+- State diagram: stateDiagram
+- ER diagram: erDiagram
+- Pie chart: pie
+- Git graph: gitGraph
 
-Always respond with valid Mermaid syntax wrapped in a code block. Do not include explanations outside the code block.`,
+Always respond with valid Mermaid 10.9.3 syntax wrapped in a code block. Do not include explanations outside the code block.`,
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
