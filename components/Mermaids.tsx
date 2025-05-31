@@ -23,25 +23,13 @@ import {
   Eye,
   PanelRightClose,
 } from "lucide-react"
-import type { Theme } from "@/types/type"
+import type { Theme, MermaidProps, ThemeConfig } from "@/types/type"
 import { sanitizeMermaidCode } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
-interface MermaidProps {
-  chart: string
-  isFullscreen?: boolean
-  onFullscreenChange?: (fullscreen: boolean) => void
-  isStandalone?: boolean
-  outputCode?: boolean
-  toggleChatVisibility?: () => void
-  toggleCanvasVisibility?: () => void
-  chatVisible?: boolean
-  theme?: Theme
-}
-
 const Available_Themes: Theme[] = ["default", "neutral", "dark", "forest", "base"]
 
-const ThemeConfigs = {
+const ThemeConfigs: Record<Theme, ThemeConfig> = {
   default: {
     name: "Default",
     canvasBackground: "bg-white",
@@ -176,7 +164,7 @@ export function Mermaid({
     return () => {
       window.removeEventListener("resize", handleResize)
     }
-  }, [])
+  }, [screenSize])
 
   // Auto-adjust controls visibility
   useEffect(() => {
@@ -189,7 +177,6 @@ export function Mermaid({
     if (!container) return
 
     let lastTouchDistance = 0
-    let lastTouchCenter = { x: 0, y: 0 }
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
@@ -275,10 +262,6 @@ export function Mermaid({
         const touch1 = e.touches[0]
         const touch2 = e.touches[1]
         lastTouchDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
-        lastTouchCenter = {
-          x: (touch1.clientX + touch2.clientX) / 2,
-          y: (touch1.clientY + touch2.clientY) / 2,
-        }
       }
     }
 
@@ -429,7 +412,7 @@ export function Mermaid({
 
           const img = new Image()
 
-          await new Promise((resolve, reject) => {
+          await new Promise<void>((resolve, reject) => {
             img.onload = () => {
               const scale = window.devicePixelRatio || 1
               canvas.width = img.width * scale
@@ -446,7 +429,7 @@ export function Mermaid({
               }
 
               ctx.drawImage(img, 0, 0)
-              resolve(null)
+              resolve()
             }
 
             img.onerror = reject
@@ -842,10 +825,6 @@ export function Mermaid({
     if (wrapper) {
       wrapper.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
       wrapper.style.transition = isDragging ? "none" : "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-    }
-
-    return () => {
-      // Cleanup function
     }
   }, [zoom, pan, isDragging])
 

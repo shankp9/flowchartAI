@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Message, OpenAIModel } from "@/types/type"
+import type { Message, OpenAIModel, ValidationResult } from "@/types/type"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -22,7 +22,7 @@ export function parseCodeFromMessage(message: string): string {
 }
 
 // Enhanced validation function for Mermaid 11.6.0
-export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+export function validateMermaidCode(code: string): ValidationResult {
   const errors: string[] = []
 
   if (!code || typeof code !== "string") {
@@ -93,7 +93,7 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
   return { isValid: errors.length === 0, errors }
 }
 
-function validateMermaidV11Compatibility(code: string, errors: string[]) {
+function validateMermaidV11Compatibility(code: string, errors: string[]): void {
   // Check for syntax patterns that might cause issues in v11.6.0
   const lines = code.split("\n")
   lines.forEach((line, index) => {
@@ -118,7 +118,7 @@ function validateMermaidV11Compatibility(code: string, errors: string[]) {
   })
 }
 
-function validateSequenceDiagramV11(lines: string[], errors: string[]) {
+function validateSequenceDiagramV11(lines: string[], errors: string[]): void {
   for (const line of lines) {
     // Check for arrows without senders
     if (line.match(/^\s*(--?>>?|--?\+\+|-x)/)) {
@@ -139,7 +139,7 @@ function validateSequenceDiagramV11(lines: string[], errors: string[]) {
   }
 }
 
-function validateFlowchartV11(lines: string[], errors: string[]) {
+function validateFlowchartV11(lines: string[], errors: string[]): void {
   for (const line of lines) {
     // Check for proper arrow syntax
     if (line.includes("->") && !line.includes("-->")) {
@@ -156,7 +156,7 @@ function validateFlowchartV11(lines: string[], errors: string[]) {
   }
 }
 
-function validateClassDiagramV11(lines: string[], errors: string[]) {
+function validateClassDiagramV11(lines: string[], errors: string[]): void {
   for (const line of lines) {
     // Check for proper class syntax
     if (line.includes("class ") && !line.match(/^class\s+[A-Za-z0-9_]+(\s*\{.*?\})?$/)) {
@@ -172,7 +172,7 @@ function validateClassDiagramV11(lines: string[], errors: string[]) {
   }
 }
 
-function validateERDiagramV11(lines: string[], errors: string[]) {
+function validateERDiagramV11(lines: string[], errors: string[]): void {
   for (const line of lines) {
     // Check for proper entity relationship syntax
     if (line.includes("||") || line.includes("}|") || line.includes("|{")) {

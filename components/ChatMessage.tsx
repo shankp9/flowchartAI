@@ -2,13 +2,7 @@
 
 import { User, Bot } from "lucide-react"
 import { Button } from "./ui/button"
-
-interface ChatMessageProps {
-  message: string
-  role?: "user" | "assistant" | "system"
-  onSuggestionClick?: (suggestion: string) => void
-  isLoading?: boolean
-}
+import type { ChatMessageProps } from "@/types/type"
 
 export function ChatMessage({ message, role = "user", onSuggestionClick, isLoading = false }: ChatMessageProps) {
   // Check if this is a suggestion message

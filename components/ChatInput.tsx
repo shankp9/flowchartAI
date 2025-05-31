@@ -6,15 +6,9 @@ import { Textarea } from "./ui/textarea"
 import { Button } from "./ui/button"
 import { Send, Loader2 } from "lucide-react"
 import type { KeyboardEvent } from "react"
+import type { ChatInputProps } from "@/types/type"
 
-interface Props {
-  messageCotent: string
-  onChange: (messageCotent: string) => void
-  onSubmit: () => void
-  isLoading?: boolean
-}
-
-export const ChatInput: React.FC<Props> = ({ messageCotent, onChange, onSubmit, isLoading = false }) => {
+export const ChatInput: React.FC<ChatInputProps> = ({ messageCotent, onChange, onSubmit, isLoading = false }) => {
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
