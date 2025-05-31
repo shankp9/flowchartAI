@@ -427,3 +427,26 @@ export function detectDiagramTypeFromCode(code: string): string {
 export function fixSequenceDiagramNewlineIssues(code: string): string {
   return sanitizeMermaidCode(code)
 }
+
+// Serialize code for external links (like mermaid.live)
+export function serializeCode(code: string): string {
+  try {
+    // Create a simple base64 encoding for the code
+    const jsonString = JSON.stringify({
+      code: code,
+      mermaid: { theme: "default" },
+    })
+
+    // Use btoa for base64 encoding (available in browsers)
+    if (typeof btoa !== "undefined") {
+      return btoa(jsonString)
+    }
+
+    // Fallback for server-side rendering
+    return Buffer.from(jsonString).toString("base64")
+  } catch (error) {
+    console.error("Error serializing code:", error)
+    // Return a simple URL-encoded version as fallback
+    return encodeURIComponent(code)
+  }
+}

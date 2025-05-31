@@ -18,8 +18,6 @@ const nextConfig = {
   generateEtags: false,
   // Add output standalone for Docker
   output: "standalone",
-  // Optimize for Docker
-  swcMinify: true,
   // Security headers
   async headers() {
     return [
