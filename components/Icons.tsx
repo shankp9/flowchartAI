@@ -2,10 +2,9 @@ import {
   Laptop,
   LucideProps,
   Twitter,
-  type Icon as LucideIcon,
 } from "lucide-react";
 
-export type Icon = LucideIcon;
+export type Icon = (props: LucideProps) => JSX.Element;
 
 export const Icons = {
   laptop: Laptop,

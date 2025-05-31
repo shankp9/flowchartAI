@@ -154,7 +154,6 @@ export function Mermaid({
         },
         c4: {
           useMaxWidth: false,
-          diagramPadding: 20,
         },
       })
     } catch (error) {
@@ -227,7 +226,9 @@ export function Mermaid({
           y: e.clientY - dragStart.y,
         })
       } else if (isElementDragging && selectedElement) {
-        selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
+        if (selectedElement instanceof HTMLElement) {
+          selectedElement.style.filter = "drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
+        }
       }
     }
 
@@ -237,7 +238,9 @@ export function Mermaid({
       container.style.cursor = interactionMode === "pan" ? (zoom > 1 ? "grab" : "default") : "crosshair"
 
       if (selectedElement) {
-        selectedElement.style.filter = ""
+        if (selectedElement instanceof HTMLElement) {
+          selectedElement.style.filter = ""
+        }
       }
     }
 
@@ -247,7 +250,9 @@ export function Mermaid({
       container.style.cursor = "default"
 
       if (selectedElement) {
-        selectedElement.style.filter = ""
+        if (selectedElement instanceof HTMLElement) {
+          selectedElement.style.filter = ""
+        }
       }
     }
 
@@ -617,7 +622,6 @@ export function Mermaid({
             },
             c4: {
               useMaxWidth: false,
-              diagramPadding: 20,
             },
           })
 

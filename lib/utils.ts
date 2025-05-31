@@ -436,7 +436,7 @@ function fixSequenceDiagramIssuesV11(code: string): string {
         }
 
         // Escape special characters for v11.6.0
-        message = message.replace(/[<>&]/g, (char) => {
+        message = message.replace(/[<>&]/g, (char: string) => {
           switch (char) {
             case "<":
               return "&lt;"
@@ -497,7 +497,7 @@ function fixArrowSyntaxIssuesV11(code: string): string {
           return "-->"
         }
         // Escape special characters for v11.6.0
-        const escapedLabel = label.trim().replace(/[<>&]/g, (char) => {
+        const escapedLabel = label.trim().replace(/[<>&]/g, (char: string) => {
           switch (char) {
             case "<":
               return "&lt;"
@@ -833,7 +833,7 @@ function fixERDiagramSyntaxV11(code: string): string {
           .filter((attr) => attr.length > 0)
           .map((attr) => {
             // Escape special characters for v11.6.0
-            return attr.replace(/[<>&]/g, (char) => {
+            return attr.replace(/[<>&]/g, (char: string) => {
               switch (char) {
                 case "<":
                   return "&lt;"
