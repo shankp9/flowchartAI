@@ -5,17 +5,35 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
+      target: runner
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NEXT_TELEMETRY_DISABLED=1
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      test: ["CMD", "node", "healthcheck.js"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     volumes:
-      - ./logs:/app/logs
+      - ./logs:/app/logs:rw
+    networks:
+      - flowchart-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+networks:
+  flowchart-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local

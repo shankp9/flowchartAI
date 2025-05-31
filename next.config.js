@@ -18,6 +18,8 @@ const nextConfig = {
   generateEtags: false,
   // Add output standalone for Docker
   output: "standalone",
+  // Optimize for Docker
+  swcMinify: true,
   // Security headers
   async headers() {
     return [
@@ -36,9 +38,23 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "origin-when-cross-origin",
           },
+          {
+            key: "X-DNS-Prefetch-Control",
+            value: "on",
+          },
         ],
       },
     ]
+  },
+  // Optimize bundle
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      }
+    }
+    return config
   },
 }
 
