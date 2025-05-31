@@ -375,7 +375,7 @@ export function sanitizeMermaidCode(code: string): string {
   // Enhanced syntax cleaning and validation for v10.9.3
   cleanedCode = cleanInvalidSyntaxV10(cleanedCode)
 
-  // Fix common sequence diagram issues
+  // Fix common sequence diagram issues - CRITICAL FIX
   if (cleanedCode.includes("sequenceDiagram")) {
     cleanedCode = fixSequenceDiagramSyntaxV10(cleanedCode)
   }
@@ -398,8 +398,11 @@ export function sanitizeMermaidCode(code: string): string {
   // Final v10.9.3 compatibility check and cleanup
   cleanedCode = ensureV10Compatibility(cleanedCode)
 
-  // Enhanced line processing to fix arrow syntax issues
+  // Enhanced line processing to fix arrow syntax issues - CRITICAL FIX
   cleanedCode = fixArrowSyntaxIssuesV10(cleanedCode)
+
+  // CRITICAL: Fix sequence diagram specific newline issues
+  cleanedCode = fixSequenceDiagramNewlineIssues(cleanedCode)
 
   // Remove empty lines and normalize whitespace
   cleanedCode = cleanedCode
@@ -409,6 +412,81 @@ export function sanitizeMermaidCode(code: string): string {
     .join("\n")
 
   return cleanedCode
+}
+
+// NEW FUNCTION: Fix sequence diagram newline issues that cause parse errors
+function fixSequenceDiagramNewlineIssues(code: string): string {
+  if (!code.includes("sequenceDiagram")) {
+    return code
+  }
+
+  const lines = code.split("\n")
+  const fixedLines: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+
+    // Skip empty lines and diagram declaration
+    if (!line || line === "sequenceDiagram") {
+      fixedLines.push(line)
+      continue
+    }
+
+    // Handle participant declarations
+    if (line.startsWith("participant")) {
+      fixedLines.push(line)
+      continue
+    }
+
+    // CRITICAL FIX: Handle sequence arrows with messages
+    if (line.match(/^[A-Za-z0-9_]+\s*(->>|-->>|-x)\s*[A-Za-z0-9_]+/)) {
+      // Check if the line has a message part
+      const arrowMatch = line.match(/^([A-Za-z0-9_]+)\s*(->>|-->>|-x)\s*([A-Za-z0-9_]+)(.*)/)
+      if (arrowMatch) {
+        const [, sender, arrow, receiver, messagePart] = arrowMatch
+
+        // Clean up the message part
+        let message = messagePart.trim()
+
+        // Remove leading colon and whitespace
+        message = message.replace(/^:\s*/, "")
+
+        // If message is empty or contains problematic characters, provide a default
+        if (!message || message.includes("\n") || message.includes("|") || message.length === 0) {
+          message = "Message"
+        }
+
+        // Ensure message doesn't contain characters that cause parsing issues
+        message = message.replace(/[|{}[\]]/g, "").trim()
+
+        // Limit message length to prevent parsing issues
+        if (message.length > 50) {
+          message = message.substring(0, 47) + "..."
+        }
+
+        // Reconstruct the line with proper format
+        if (message && message !== "") {
+          fixedLines.push(`${sender} ${arrow} ${receiver}: ${message}`)
+        } else {
+          fixedLines.push(`${sender} ${arrow} ${receiver}`)
+        }
+      } else {
+        fixedLines.push(line)
+      }
+      continue
+    }
+
+    // Handle other sequence diagram elements
+    if (line.includes("Note") || line.includes("activate") || line.includes("deactivate")) {
+      fixedLines.push(line)
+      continue
+    }
+
+    // Default: add the line as-is if it doesn't match sequence patterns
+    fixedLines.push(line)
+  }
+
+  return fixedLines.join("\n")
 }
 
 function fixArrowSyntaxIssuesV10(code: string): string {
@@ -427,7 +505,14 @@ function fixArrowSyntaxIssuesV10(code: string): string {
       continue
     }
 
-    // Fix arrow syntax issues for v10.9.3
+    // CRITICAL FIX: Handle sequence diagram arrows specifically
+    if (code.includes("sequenceDiagram") && line.match(/^[A-Za-z0-9_]+\s*(->>|-->>|-x)/)) {
+      // This is handled by fixSequenceDiagramNewlineIssues, so just pass through
+      fixedLines.push(line)
+      continue
+    }
+
+    // Fix flowchart arrow syntax issues for v10.9.3
     if (line.includes("-->") || line.includes("->")) {
       // Fix incomplete arrow labels that might cause parse errors
       line = line.replace(/-->\s*\|\s*([^|]*?)\s*\|\s*$/g, (match, label) => {
@@ -448,18 +533,6 @@ function fixArrowSyntaxIssuesV10(code: string): string {
 
       // Fix single arrows to double arrows for better v10.9.3 compatibility
       line = line.replace(/([A-Za-z0-9_\])}]+)\s*->\s*([A-Za-z0-9_[({]+)/g, "$1 --> $2")
-    }
-
-    // Fix sequence diagram arrow syntax for v10.9.3
-    if (line.includes("->>") || line.includes("-->>") || line.includes("-x")) {
-      // Ensure proper spacing around sequence arrows
-      line = line.replace(/([A-Za-z0-9_]+)\s*(->>|-->>|-x)\s*([A-Za-z0-9_]+)/g, "$1 $2 $3")
-
-      // Fix message syntax
-      line = line.replace(/:\s*$/, "")
-      if (line.includes(":") && !line.match(/:\s*.+$/)) {
-        line = line.replace(/:/, ": Message")
-      }
     }
 
     // Remove trailing characters that might cause issues
@@ -541,6 +614,10 @@ function cleanInvalidSyntaxV10(code: string): string {
   // Remove incomplete arrow labels
   cleaned = cleaned.replace(/-->\s*\|\s*$/gm, "-->")
   cleaned = cleaned.replace(/-->\s*\|([^|]*?)\s*$/gm, "-->|$1|")
+
+  // CRITICAL: Fix sequence diagram message syntax issues
+  cleaned = cleaned.replace(/(->>|-->>|-x)\s*:\s*\n/g, "$1: Message\n")
+  cleaned = cleaned.replace(/(->>|-->>|-x)\s*:\s*$/gm, "$1: Message")
 
   // Remove any remaining problematic characters for v10.9.3
   cleaned = cleaned.replace(/[^\w\s\-><|{}[\]$$$$:;.,"'`~!@#$%^&*+=/\\?()\n]/g, "")
@@ -665,17 +742,33 @@ function fixSequenceDiagramSyntaxV10(code: string): string {
       }
     }
 
-    // Ensure arrow syntax is v10.9.3 compatible
+    // CRITICAL: Ensure arrow syntax is v10.9.3 compatible and handles messages properly
     const arrowMatch = fixedLine.match(/^(\w+)\s*(--?>>?|--?\+\+|-x)\s*(\w+)(.*)/)
     if (arrowMatch) {
-      const [, sender, arrow, receiver, message] = arrowMatch
+      const [, sender, arrow, receiver, messagePart] = arrowMatch
       participants.add(sender)
       participants.add(receiver)
       lastParticipant = sender
 
-      // Ensure message format is simple for v10.9.3
-      const cleanMessage = message ? message.replace(/^\s*:\s*/, " : ").trim() : ""
-      fixedLine = `${sender} ${arrow} ${receiver}${cleanMessage}`
+      // Clean up the message part for v10.9.3 compatibility
+      let message = messagePart.trim()
+
+      // Remove leading colon and whitespace
+      message = message.replace(/^:\s*/, "")
+
+      // Ensure message doesn't contain problematic characters
+      message = message.replace(/[|{}[\]\n]/g, "").trim()
+
+      // If message is empty, don't include the colon
+      if (message && message.length > 0) {
+        // Limit message length to prevent parsing issues
+        if (message.length > 50) {
+          message = message.substring(0, 47) + "..."
+        }
+        fixedLine = `${sender} ${arrow} ${receiver}: ${message}`
+      } else {
+        fixedLine = `${sender} ${arrow} ${receiver}`
+      }
     }
 
     fixedLines.push(fixedLine)
