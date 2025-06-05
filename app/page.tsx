@@ -323,6 +323,10 @@ export default function Home() {
         } else {
           const errorMessage = validationResult.errors.join("; ") || "Invalid diagram syntax generated"
 
+          // Add this debug log to help diagnose issues
+          console.log("Validation failed for:", sanitizedCode)
+          console.log("Validation errors:", validationResult.errors)
+
           // If we haven't reached max retries, try again
           if (attemptNumber < maxRetries - 1) {
             console.warn(`Attempt ${attemptNumber + 1} failed: ${errorMessage}. Retrying...`)

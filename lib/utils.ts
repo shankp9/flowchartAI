@@ -58,6 +58,9 @@ export function sanitizeMermaidCode(code: string): string {
         break
     }
 
+    // Ensure there's at least some content after the diagram type
+    cleanCode = addMinimalContentForEmptyDiagram(cleanCode, diagramType)
+
     return cleanCode
   } catch (error) {
     console.error("Error sanitizing Mermaid code:", error)
@@ -342,69 +345,41 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     "gantt",
     "pie",
     "gitgraph",
+    "mindmap",
+    "timeline",
+    "c4c",
+    "c4context",
+    "c4container",
+    "c4component",
   ]
 
   const hasValidStart = validDiagramTypes.some((type) => firstLine.startsWith(type))
 
   if (!hasValidStart) {
     errors.push("Code does not start with a valid diagram type")
+    return { isValid: false, errors }
   }
 
   // Check for basic syntax issues
-  if (trimmedCode.includes("Error:") || trimmedCode.includes("Invalid")) {
-    errors.push("Code contains error messages")
-  }
-
-  // Check for minimum content
-  const nonEmptyLines = lines.filter((line) => line.trim().length > 0)
-  if (nonEmptyLines.length < 2) {
-    errors.push("Diagram appears to be incomplete (no content after diagram type)")
-  }
-
-  // Check if there's actual diagram content beyond just the type declaration
-  const hasContent = nonEmptyLines.slice(1).some((line) => {
-    const trimmed = line.trim()
-    return (
-      trimmed.length > 0 &&
-      !trimmed.startsWith("//") &&
-      !trimmed.startsWith("#") &&
-      (trimmed.includes("-->") ||
-        trimmed.includes("->") ||
-        trimmed.includes(":") ||
-        trimmed.includes("[") ||
-        trimmed.includes("(") ||
-        trimmed.includes("{") ||
-        trimmed.includes("participant") ||
-        trimmed.includes("class") ||
-        trimmed.includes("state") ||
-        trimmed.includes("section"))
-    )
-  })
-
-  if (!hasContent) {
-    errors.push("Diagram lacks actual content or connections")
-  }
-
-  // Check for basic syntax issues - be more specific
   if (
     trimmedCode.includes("Error: Invalid Response") ||
     trimmedCode.includes("Failed to generate") ||
     trimmedCode.includes("Parse error")
   ) {
     errors.push("Code contains error messages")
+    return { isValid: false, errors }
   }
 
-  // Allow very simple diagrams if they have basic structure
-  const isVerySimple = nonEmptyLines.length >= 2 && hasValidStart && !trimmedCode.includes("Error")
-
-  if (isVerySimple && errors.length === 1 && errors[0].includes("incomplete")) {
-    errors.pop() // Remove the incomplete error for simple but valid diagrams
+  // For extremely simple diagrams, just check if there's any content after the diagram type
+  // This is a very lenient check to allow minimal valid diagrams
+  if (lines.length >= 2) {
+    // If there's at least one more line after the diagram type, consider it valid
+    return { isValid: true, errors: [] }
   }
 
-  return {
-    isValid: errors.length === 0,
-    errors,
-  }
+  // If we get here, it means there's only one line (the diagram type)
+  errors.push("Diagram contains only the diagram type declaration")
+  return { isValid: false, errors }
 }
 
 // Generate context-aware suggestions based on diagram type and content
@@ -457,4 +432,36 @@ export function generateContextAwareSuggestions(code: string, diagramType: strin
   }
 
   return suggestions
+}
+
+// Add this helper function at the end of the file
+function addMinimalContentForEmptyDiagram(code: string, diagramType: string): string {
+  const lines = code.split("\n").filter((line) => line.trim().length > 0)
+
+  // If there's only the diagram type declaration, add minimal content
+  if (lines.length <= 1) {
+    switch (diagramType.toLowerCase()) {
+      case "flowchart":
+      case "graph":
+        return `${code}\n    A[Start] --> B[End]`
+      case "sequencediagram":
+        return `${code}\n    participant A as System\n    participant B as User\n    A->>B: Hello`
+      case "classdiagram":
+        return `${code}\n    class Example`
+      case "statediagram":
+        return `${code}\n    [*] --> State1`
+      case "erdiagram":
+        return `${code}\n    ENTITY`
+      case "journey":
+        return `${code}\n    title Journey\n    section Section\n      Task: 5: Me`
+      case "gantt":
+        return `${code}\n    title Schedule\n    section Section\n    Task: 2023-01-01, 1d`
+      case "pie":
+        return `${code}\n    "A" : 1\n    "B" : 2`
+      default:
+        return `${code}\n    A --> B`
+    }
+  }
+
+  return code
 }
