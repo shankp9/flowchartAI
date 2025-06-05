@@ -356,8 +356,49 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
   }
 
   // Check for minimum content
-  if (lines.length < 2) {
-    errors.push("Diagram appears to be incomplete (too few lines)")
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0)
+  if (nonEmptyLines.length < 2) {
+    errors.push("Diagram appears to be incomplete (no content after diagram type)")
+  }
+
+  // Check if there's actual diagram content beyond just the type declaration
+  const hasContent = nonEmptyLines.slice(1).some((line) => {
+    const trimmed = line.trim()
+    return (
+      trimmed.length > 0 &&
+      !trimmed.startsWith("//") &&
+      !trimmed.startsWith("#") &&
+      (trimmed.includes("-->") ||
+        trimmed.includes("->") ||
+        trimmed.includes(":") ||
+        trimmed.includes("[") ||
+        trimmed.includes("(") ||
+        trimmed.includes("{") ||
+        trimmed.includes("participant") ||
+        trimmed.includes("class") ||
+        trimmed.includes("state") ||
+        trimmed.includes("section"))
+    )
+  })
+
+  if (!hasContent) {
+    errors.push("Diagram lacks actual content or connections")
+  }
+
+  // Check for basic syntax issues - be more specific
+  if (
+    trimmedCode.includes("Error: Invalid Response") ||
+    trimmedCode.includes("Failed to generate") ||
+    trimmedCode.includes("Parse error")
+  ) {
+    errors.push("Code contains error messages")
+  }
+
+  // Allow very simple diagrams if they have basic structure
+  const isVerySimple = nonEmptyLines.length >= 2 && hasValidStart && !trimmedCode.includes("Error")
+
+  if (isVerySimple && errors.length === 1 && errors[0].includes("incomplete")) {
+    errors.pop() // Remove the incomplete error for simple but valid diagrams
   }
 
   return {
