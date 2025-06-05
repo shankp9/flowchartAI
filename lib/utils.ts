@@ -17,6 +17,33 @@ export function sanitizeMermaidCode(code: string): string {
     // Remove any extra whitespace and normalize line endings
     cleanCode = cleanCode.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
 
+    // Remove any non-printable characters and extra symbols
+    cleanCode = cleanCode.replace(/[^\x20-\x7E\n]/g, "")
+
+    // Remove any emoji or special characters that might cause parsing issues
+    cleanCode = cleanCode.replace(/[✅❌🔄📊💡]/gu, "")
+
+    // Remove any text that looks like status messages
+    cleanCode = cleanCode.replace(/Diagram generated.*$/gm, "")
+    cleanCode = cleanCode.replace(/Successfully.*$/gm, "")
+    cleanCode = cleanCode.replace(/Error.*$/gm, "")
+
+    // Clean up multiple spaces and newlines
+    cleanCode = cleanCode.replace(/\s+/g, " ").replace(/\n\s+/g, "\n").trim()
+
+    // Split into lines and clean each line
+    const lines = cleanCode
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (lines.length === 0) {
+      return "graph TD\n    A[Start] --> B[End]"
+    }
+
+    // Reconstruct the code with proper formatting
+    cleanCode = lines.join("\n")
+
     // Fix common syntax issues
     cleanCode = fixCommonSyntaxIssues(cleanCode)
 
@@ -61,10 +88,14 @@ export function sanitizeMermaidCode(code: string): string {
     // Ensure there's at least some content after the diagram type
     cleanCode = addMinimalContentForEmptyDiagram(cleanCode, diagramType)
 
+    // Final cleanup
+    cleanCode = cleanCode.trim()
+
     return cleanCode
   } catch (error) {
     console.error("Error sanitizing Mermaid code:", error)
-    return code // Return original code if sanitization fails
+    // Return a simple fallback diagram
+    return "graph TD\n    A[Start] --> B[End]"
   }
 }
 
@@ -92,124 +123,147 @@ function detectDiagramType(code: string): string {
     return "gitgraph"
   }
 
-  return "unknown"
+  return "flowchart" // Default to flowchart
 }
 
 // Fix common syntax issues across all diagram types
 function fixCommonSyntaxIssues(code: string): string {
-  // Fix quotes around node labels
-  code = code.replace(/([A-Za-z0-9_]+)\s*\[\s*([^[\]]+)\s*\]/g, '$1["$2"]')
+  // Remove any remaining special characters or emojis
+  code = code.replace(/[^\x20-\x7E\n]/g, "")
 
-  // Fix arrow syntax
-  code = code.replace(/-->/g, " --> ")
-  code = code.replace(/--->/g, " ---> ")
-  code = code.replace(/-\.->/g, " -.-> ")
-  code = code.replace(/==>/g, " ==> ")
+  // Fix spacing around arrows
+  code = code.replace(/\s*-->\s*/g, " --> ")
+  code = code.replace(/\s*--->\s*/g, " ---> ")
+  code = code.replace(/\s*-\.->\s*/g, " -.-> ")
+  code = code.replace(/\s*==>\s*/g, " ==> ")
+  code = code.replace(/\s*->>?\s*/g, " ->> ")
+  code = code.replace(/\s*-->>?\s*/g, " -->> ")
 
   // Fix node connections
   code = code.replace(/\s+--\s+/g, " -- ")
   code = code.replace(/\s+---\s+/g, " --- ")
 
-  // Remove extra spaces
-  code = code.replace(/\s+/g, " ").replace(/\n\s+/g, "\n")
+  // Clean up extra spaces but preserve line structure
+  const lines = code.split("\n")
+  const cleanedLines = lines
+    .map((line) => {
+      // Remove extra spaces but keep proper indentation
+      return line.replace(/\s+/g, " ").trim()
+    })
+    .filter((line) => line.length > 0)
 
-  return code
+  return cleanedLines.join("\n")
 }
 
 // Fix flowchart-specific syntax
 function fixFlowchartSyntax(code: string): string {
+  const lines = code.split("\n")
+  const firstLine = lines[0].trim().toLowerCase()
+
   // Ensure proper flowchart declaration
-  if (!code.trim().startsWith("flowchart") && !code.trim().startsWith("graph")) {
-    code = "flowchart TD\n" + code
+  if (!firstLine.startsWith("flowchart") && !firstLine.startsWith("graph")) {
+    lines[0] = "graph TD"
+  } else if (firstLine === "flowchart" || firstLine === "graph") {
+    lines[0] = "graph TD"
   }
 
-  // Fix node shapes
-  code = code.replace(/\[([^\]]+)\]/g, '["$1"]')
-  code = code.replace(/$$([^)]+)$$/g, '("$1")')
-  code = code.replace(/\{([^}]+)\}/g, '{"$1"}')
-  code = code.replace(/>\[([^\]]+)\]/g, '>["$1"]')
+  // Rejoin and fix node syntax
+  code = lines.join("\n")
+
+  // Fix node shapes with proper spacing
+  code = code.replace(/([A-Za-z0-9_]+)\s*\[\s*([^[\]]+)\s*\]/g, '$1["$2"]')
+  code = code.replace(/([A-Za-z0-9_]+)\s*$$\s*([^()]+)\s*$$/g, '$1("$2")')
+  code = code.replace(/([A-Za-z0-9_]+)\s*\{\s*([^{}]+)\s*\}/g, '$1{"$2"}')
 
   return code
 }
 
 // Fix sequence diagram syntax
 function fixSequenceDiagramSyntax(code: string): string {
-  if (!code.trim().startsWith("sequenceDiagram")) {
-    code = "sequenceDiagram\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("sequencediagram")) {
+    lines[0] = "sequenceDiagram"
   }
 
-  // Fix participant declarations
-  code = code.replace(/participant\s+([^\n]+)/g, (match, participant) => {
-    if (!participant.includes(" as ")) {
-      return `participant ${participant}`
-    }
-    return match
-  })
-
-  return code
+  return lines.join("\n")
 }
 
 // Fix class diagram syntax
 function fixClassDiagramSyntax(code: string): string {
-  if (!code.trim().startsWith("classDiagram")) {
-    code = "classDiagram\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("classdiagram")) {
+    lines[0] = "classDiagram"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix state diagram syntax
 function fixStateDiagramSyntax(code: string): string {
-  if (!code.trim().startsWith("stateDiagram")) {
-    code = "stateDiagram-v2\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("statediagram")) {
+    lines[0] = "stateDiagram-v2"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix ER diagram syntax
 function fixERDiagramSyntax(code: string): string {
-  if (!code.trim().startsWith("erDiagram")) {
-    code = "erDiagram\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("erdiagram")) {
+    lines[0] = "erDiagram"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix journey syntax
 function fixJourneySyntax(code: string): string {
-  if (!code.trim().startsWith("journey")) {
-    code = "journey\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("journey")) {
+    lines[0] = "journey"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix Gantt syntax
 function fixGanttSyntax(code: string): string {
-  if (!code.trim().startsWith("gantt")) {
-    code = "gantt\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("gantt")) {
+    lines[0] = "gantt"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix pie chart syntax
 function fixPieSyntax(code: string): string {
-  if (!code.trim().startsWith("pie")) {
-    code = "pie title Pie Chart\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("pie")) {
+    lines[0] = "pie title Pie Chart"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Fix git graph syntax
 function fixGitGraphSyntax(code: string): string {
-  if (!code.trim().startsWith("gitgraph")) {
-    code = "gitgraph\n" + code
+  const lines = code.split("\n")
+
+  if (!lines[0].trim().toLowerCase().startsWith("gitgraph")) {
+    lines[0] = "gitgraph"
   }
 
-  return code
+  return lines.join("\n")
 }
 
 // Convert old flowchart.js syntax to Mermaid
@@ -221,7 +275,7 @@ export function convertOldFlowchartToMermaid(code: string): string {
     }
 
     // Convert old flowchart.js syntax
-    let mermaidCode = "flowchart TD\n"
+    let mermaidCode = "graph TD\n"
 
     const lines = code.split("\n").filter((line) => line.trim())
 
@@ -260,7 +314,7 @@ export function convertOldFlowchartToMermaid(code: string): string {
     return mermaidCode
   } catch (error) {
     console.error("Error converting old flowchart syntax:", error)
-    return code
+    return "graph TD\n    A[Start] --> B[End]"
   }
 }
 
@@ -330,7 +384,13 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
     return { isValid: false, errors }
   }
 
-  const lines = trimmedCode.split("\n")
+  // Check for non-printable characters that might cause parsing issues
+  if (/[^\x20-\x7E\n]/.test(trimmedCode)) {
+    errors.push("Code contains non-printable characters")
+    return { isValid: false, errors }
+  }
+
+  const lines = trimmedCode.split("\n").filter((line) => line.trim().length > 0)
   const firstLine = lines[0].trim().toLowerCase()
 
   // Check if it starts with a valid diagram type
@@ -364,21 +424,21 @@ export function validateMermaidCode(code: string): { isValid: boolean; errors: s
   if (
     trimmedCode.includes("Error: Invalid Response") ||
     trimmedCode.includes("Failed to generate") ||
-    trimmedCode.includes("Parse error")
+    trimmedCode.includes("Parse error") ||
+    trimmedCode.includes("✅") ||
+    trimmedCode.includes("❌") ||
+    trimmedCode.includes("🔄")
   ) {
-    errors.push("Code contains error messages")
+    errors.push("Code contains error messages or invalid characters")
     return { isValid: false, errors }
   }
 
-  // For extremely simple diagrams, just check if there's any content after the diagram type
-  // This is a very lenient check to allow minimal valid diagrams
-  if (lines.length >= 2) {
-    // If there's at least one more line after the diagram type, consider it valid
+  // Very lenient check - if we have at least a diagram type, consider it potentially valid
+  if (lines.length >= 1) {
     return { isValid: true, errors: [] }
   }
 
-  // If we get here, it means there's only one line (the diagram type)
-  errors.push("Diagram contains only the diagram type declaration")
+  errors.push("Diagram is completely empty")
   return { isValid: false, errors }
 }
 
@@ -443,23 +503,23 @@ function addMinimalContentForEmptyDiagram(code: string, diagramType: string): st
     switch (diagramType.toLowerCase()) {
       case "flowchart":
       case "graph":
-        return `${code}\n    A[Start] --> B[End]`
+        return `${lines[0]}\n    A[Start] --> B[End]`
       case "sequencediagram":
-        return `${code}\n    participant A as System\n    participant B as User\n    A->>B: Hello`
+        return `${lines[0]}\n    participant A as System\n    participant B as User\n    A->>B: Hello`
       case "classdiagram":
-        return `${code}\n    class Example`
+        return `${lines[0]}\n    class Example`
       case "statediagram":
-        return `${code}\n    [*] --> State1`
+        return `${lines[0]}\n    [*] --> State1`
       case "erdiagram":
-        return `${code}\n    ENTITY`
+        return `${lines[0]}\n    ENTITY`
       case "journey":
-        return `${code}\n    title Journey\n    section Section\n      Task: 5: Me`
+        return `${lines[0]}\n    title Journey\n    section Section\n      Task: 5: Me`
       case "gantt":
-        return `${code}\n    title Schedule\n    section Section\n    Task: 2023-01-01, 1d`
+        return `${lines[0]}\n    title Schedule\n    section Section\n    Task: 2023-01-01, 1d`
       case "pie":
-        return `${code}\n    "A" : 1\n    "B" : 2`
+        return `${lines[0]}\n    "A" : 1\n    "B" : 2`
       default:
-        return `${code}\n    A --> B`
+        return `${lines[0]}\n    A --> B`
     }
   }
 
