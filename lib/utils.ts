@@ -284,3 +284,136 @@ export function serializeCode(code: string): string {
     return ""
   }
 }
+
+// Detect diagram type from existing code
+export function detectDiagramTypeFromCode(code: string): string {
+  const firstLine = code.split("\n")[0].trim().toLowerCase()
+
+  if (firstLine.startsWith("graph") || firstLine.startsWith("flowchart")) {
+    return "flowchart"
+  } else if (firstLine.startsWith("sequencediagram")) {
+    return "sequence"
+  } else if (firstLine.startsWith("classdiagram")) {
+    return "class"
+  } else if (firstLine.startsWith("statediagram")) {
+    return "state"
+  } else if (firstLine.startsWith("erdiagram")) {
+    return "er"
+  } else if (firstLine.startsWith("journey")) {
+    return "journey"
+  } else if (firstLine.startsWith("gantt")) {
+    return "gantt"
+  } else if (firstLine.startsWith("pie")) {
+    return "pie"
+  } else if (firstLine.startsWith("gitgraph")) {
+    return "gitgraph"
+  }
+
+  return "flowchart" // Default fallback
+}
+
+// Validate Mermaid code syntax
+export function validateMermaidCode(code: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = []
+
+  if (!code || typeof code !== "string") {
+    errors.push("Code is empty or not a string")
+    return { isValid: false, errors }
+  }
+
+  const trimmedCode = code.trim()
+  if (trimmedCode.length === 0) {
+    errors.push("Code is empty after trimming")
+    return { isValid: false, errors }
+  }
+
+  const lines = trimmedCode.split("\n")
+  const firstLine = lines[0].trim().toLowerCase()
+
+  // Check if it starts with a valid diagram type
+  const validDiagramTypes = [
+    "graph",
+    "flowchart",
+    "sequencediagram",
+    "classdiagram",
+    "statediagram",
+    "erdiagram",
+    "journey",
+    "gantt",
+    "pie",
+    "gitgraph",
+  ]
+
+  const hasValidStart = validDiagramTypes.some((type) => firstLine.startsWith(type))
+
+  if (!hasValidStart) {
+    errors.push("Code does not start with a valid diagram type")
+  }
+
+  // Check for basic syntax issues
+  if (trimmedCode.includes("Error:") || trimmedCode.includes("Invalid")) {
+    errors.push("Code contains error messages")
+  }
+
+  // Check for minimum content
+  if (lines.length < 2) {
+    errors.push("Diagram appears to be incomplete (too few lines)")
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  }
+}
+
+// Generate context-aware suggestions based on diagram type and content
+export function generateContextAwareSuggestions(code: string, diagramType: string): string[] {
+  const suggestions: string[] = []
+
+  switch (diagramType) {
+    case "flowchart":
+      suggestions.push(
+        "Add error handling paths to the flowchart",
+        "Include decision points for better flow control",
+        "Add more descriptive labels to the process steps",
+      )
+      break
+    case "sequence":
+      suggestions.push(
+        "Add error response scenarios",
+        "Include authentication steps",
+        "Add timing constraints or delays",
+      )
+      break
+    case "class":
+      suggestions.push(
+        "Add method parameters and return types",
+        "Include inheritance relationships",
+        "Add interface implementations",
+      )
+      break
+    case "state":
+      suggestions.push("Add transition conditions", "Include error states", "Add concurrent state regions")
+      break
+    case "er":
+      suggestions.push("Add foreign key relationships", "Include cardinality constraints", "Add attribute data types")
+      break
+    case "journey":
+      suggestions.push(
+        "Add emotional ratings to journey steps",
+        "Include pain points in the journey",
+        "Add touchpoint details",
+      )
+      break
+    case "gantt":
+      suggestions.push("Add task dependencies", "Include milestone markers", "Add resource allocation details")
+      break
+    case "pie":
+      suggestions.push("Add percentage values to segments", "Include more data categories", "Add a descriptive title")
+      break
+    default:
+      suggestions.push("Add more detail to the diagram", "Include additional connections", "Add descriptive labels")
+  }
+
+  return suggestions
+}
